@@ -1,14 +1,12 @@
 const API_URL = 'http://localhost:3000/api';
 
-// Garante scroll ao carregar
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📝 Página de login carregada');
     
-    // Força scroll funcionar
+
     document.body.style.overflow = 'auto';
     document.documentElement.style.overflow = 'auto';
 });
-
 // Troca entre abas de login e cadastro
 function showTab(tab) {
     const tabs = document.querySelectorAll('.tab-btn');

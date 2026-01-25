@@ -1,9 +1,3 @@
-// ==================== ADMIN.JS COMPLETO - PARTE 1 DE 2 ====================
-// INSTRUÇÕES: 
-// 1. Copie este código INTEIRO
-// 2. Cole substituindo TODO o conteúdo de js/admin.js
-// 3. Role até o final e copie também a PARTE 2
-
 const API_URL = 'http://localhost:3000/api';
 
 // ==================== FERIADOS NACIONAIS ====================
