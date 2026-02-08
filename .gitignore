@@ -1,0 +1,20 @@
+# Dependências (Nunca suba esta pasta, o Render instala tudo via npm install)
+node_modules/
+
+# Banco de dados local (Opcional - veja a explicação abaixo)
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads de fotos (Geralmente não queremos fotos de teste no GitHub)
+uploads/
+
+# Arquivos de sistema e ambiente
+.env
+.DS_Store
+Thumbs.db
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

@@ -7,25 +7,33 @@ const database = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ==========================================
+// CONFIGURAÇÃO DE DIRETÓRIOS E MIDDLEWARES
+// ==========================================
 
-// Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Serve arquivos estáticos
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Caminhos absolutos para evitar erros em produção
+const publicPath = path.join(__dirname, 'public');
+const uploadsDir = path.join(__dirname, 'uploads');
 
-// Cria pasta de uploads
-const uploadsDir = path.join(__dirname, '../uploads');
+// Serve arquivos estáticos da pasta public (frontend)
+app.use(express.static(publicPath));
+
+// Serve arquivos de upload
+app.use('/uploads', express.static(uploadsDir));
+
+// Cria pasta de uploads se ela não existir
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// ========== ROTAS DE AUTENTICAÇÃO ==========
+// ==========================================
+// ROTAS DE AUTENTICAÇÃO
+// ==========================================
 
-// Registrar novo usuário
 app.post('/api/register', (req, res) => {
     const { name, email, password } = req.body;
     
@@ -48,17 +56,11 @@ app.post('/api/register', (req, res) => {
         res.json({
             success: true,
             message: 'Usuário cadastrado com sucesso',
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            }
+            user: { id: user.id, name: user.name, email: user.email, role: user.role }
         });
     });
 });
 
-// Login
 app.post('/api/login', (req, res) => {
     const { email, password } = req.body;
     
@@ -67,79 +69,41 @@ app.post('/api/login', (req, res) => {
     }
     
     database.verifyLogin(email, password, (err, user) => {
-        if (err) {
-            return res.status(500).json({ error: 'Erro ao fazer login' });
-        }
-        if (!user) {
-            return res.status(401).json({ error: 'Email ou senha inválidos' });
-        }
+        if (err) return res.status(500).json({ error: 'Erro ao fazer login' });
+        if (!user) return res.status(401).json({ error: 'Email ou senha inválidos' });
         
         res.json({
             success: true,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            }
+            user: { id: user.id, name: user.name, email: user.email, role: user.role }
         });
     });
 });
 
-// ========== ROTAS DE REGISTROS ==========
+// ==========================================
+// ROTAS DE REGISTROS DE PONTO
+// ==========================================
 
-// Registrar ponto
 app.post('/api/record', (req, res) => {
-    console.log('📝 Recebendo requisição de registro de ponto...');
-    console.log('Headers:', req.headers);
-    console.log('Body keys:', Object.keys(req.body));
-    
     const { user_id, user_name, user_email, type, photo, latitude, longitude, address } = req.body;
     
-    console.log('Dados recebidos:', {
-        user_id,
-        user_name,
-        user_email,
-        type,
-        has_photo: !!photo,
-        photo_length: photo ? photo.length : 0,
-        latitude,
-        longitude,
-        address
-    });
-    
     if (!user_id || !user_name || !type) {
-        console.error('❌ Dados incompletos:', { user_id, user_name, type });
-        return res.status(400).json({ 
-            error: 'Dados incompletos',
-            missing: {
-                user_id: !user_id,
-                user_name: !user_name,
-                type: !type
-            }
-        });
+        return res.status(400).json({ error: 'Dados incompletos' });
     }
 
     const now = new Date();
     let photoFilename = null;
 
-    // Salva foto se existir
     if (photo) {
         try {
-            console.log('📷 Salvando foto...');
             const base64Data = photo.replace(/^data:image\/\w+;base64,/, '');
             const buffer = Buffer.from(base64Data, 'base64');
             photoFilename = `photo-${Date.now()}-${user_id}.jpg`;
             const photoPath = path.join(uploadsDir, photoFilename);
             
             fs.writeFileSync(photoPath, buffer);
-            console.log('✓ Foto salva:', photoFilename);
         } catch (err) {
             console.error('❌ Erro ao salvar foto:', err);
-            // Continua mesmo se não conseguir salvar a foto
         }
-    } else {
-        console.log('⚠️ Nenhuma foto enviada');
     }
 
     const recordData = {
@@ -156,18 +120,8 @@ app.post('/api/record', (req, res) => {
         timestamp: now.getTime()
     };
 
-    console.log('💾 Salvando no banco de dados:', recordData);
-
     database.insertRecord(recordData, function(err, result) {
-        if (err) {
-            console.error('❌ Erro ao inserir registro no banco:', err);
-            return res.status(500).json({ 
-                error: 'Erro ao registrar ponto',
-                details: err.message 
-            });
-        }
-        
-        console.log('✓ Ponto registrado com sucesso! ID:', result.lastID);
+        if (err) return res.status(500).json({ error: 'Erro ao registrar ponto' });
         
         res.json({
             success: true,
@@ -178,55 +132,17 @@ app.post('/api/record', (req, res) => {
     });
 });
 
-// Buscar todos os registros (admin)
 app.get('/api/records', (req, res) => {
     database.getAllRecords((err, records) => {
-        if (err) {
-            return res.status(500).json({ error: 'Erro ao buscar registros' });
-        }
+        if (err) return res.status(500).json({ error: 'Erro ao buscar registros' });
         res.json({ records });
     });
 });
 
-// Buscar registros por usuário
-app.get('/api/records/user/:userId', (req, res) => {
-    database.getRecordsByUserId(req.params.userId, (err, records) => {
-        if (err) {
-            return res.status(500).json({ error: 'Erro ao buscar registros' });
-        }
-        res.json({ records });
-    });
-});
-
-// Buscar registros por data
-app.get('/api/records/date/:date', (req, res) => {
-    database.getRecordsByDate(req.params.date, (err, records) => {
-        if (err) {
-            return res.status(500).json({ error: 'Erro ao buscar registros' });
-        }
-        res.json({ records });
-    });
-});
-
-// Buscar registros por período
-app.get('/api/records/period/:start/:end', (req, res) => {
-    database.getRecordsByPeriod(req.params.start, req.params.end, (err, records) => {
-        if (err) {
-            return res.status(500).json({ error: 'Erro ao buscar registros' });
-        }
-        res.json({ records });
-    });
-});
-
-// Estatísticas (admin)
 app.get('/api/stats', (req, res) => {
     database.getStats((err, stats) => {
-        if (err) {
-            return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
-        }
-        
+        if (err) return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
         const uniqueUsers = [...new Set(stats.all_records.map(r => r.user_name))];
-        
         res.json({
             total_records: stats.total_records,
             today_records: stats.today_records,
@@ -236,9 +152,20 @@ app.get('/api/stats', (req, res) => {
     });
 });
 
-// Rota padrão redireciona para login
+// ==========================================
+// REDIRECIONAMENTO E INICIALIZAÇÃO
+// ==========================================
+
+// Rota raiz: serve o login.html que agora está dentro de /public
 app.get('/', (req, res) => {
-    res.redirect('/login.html');
+    res.sendFile(path.join(publicPath, 'login.html'));
+});
+
+// Fallback para qualquer outra rota: redireciona para login
+app.get('*', (req, res) => {
+    if (!req.path.startsWith('/api')) {
+        res.sendFile(path.join(publicPath, 'login.html'));
+    }
 });
 
 // Inicia o servidor
