@@ -12,6 +12,7 @@ const APP_SHELL = [
   '/js/admin.js',
   '/js/pwa.js',
   '/assets/logo.svg',
+  '/assets/app-icon.svg',
   '/manifest.webmanifest'
 ];
 
@@ -24,11 +25,17 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   const keep = [STATIC_CACHE, API_CACHE];
+
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => !keep.includes(key)).map((key) => caches.delete(key))
-    ))
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => !keep.includes(key))
+          .map((key) => caches.delete(key))
+      )
+    )
   );
+
   self.clients.claim();
 });
 
@@ -50,9 +57,7 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (!isSameOrigin(url)) {
-    return;
-  }
+  if (!isSameOrigin(url)) return;
 
   if (isApiGetToCache(url, request)) {
     event.respondWith(
@@ -60,7 +65,9 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const clone = networkResponse.clone();
-            caches.open(API_CACHE).then((cache) => cache.put(request, clone));
+            caches.open(API_CACHE).then((cache) =>
+              cache.put(request, clone)
+            );
           }
           return networkResponse;
         })
@@ -69,9 +76,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (request.method !== 'GET') {
-    return;
-  }
+  if (request.method !== 'GET') return;
 
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
@@ -81,7 +86,9 @@ self.addEventListener('fetch', (event) => {
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const clone = networkResponse.clone();
-            caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+            caches.open(STATIC_CACHE).then((cache) =>
+              cache.put(request, clone)
+            );
           }
           return networkResponse;
         })
