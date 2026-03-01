@@ -25,6 +25,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   const keep = [STATIC_CACHE, API_CACHE];
+
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -34,6 +35,7 @@ self.addEventListener('activate', (event) => {
       )
     )
   );
+
   self.clients.claim();
 });
 

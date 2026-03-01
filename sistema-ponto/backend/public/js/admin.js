@@ -18,6 +18,10 @@ const AppState = {
     currentTab: 'dashboard'
 };
 
+function getAdminId() {
+    return AppState.currentAdmin?.id || null;
+}
+
 // ==================== FUNÇÕES DE DATA ====================
 function isFeriado(dateStr) {
     return FERIADOS.includes(dateStr);
@@ -102,11 +106,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function checkAdminAuth() {
-    const userStr = sessionStorage.getItem('user');
+    const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
     if (userStr) {
         const user = JSON.parse(userStr);
         if (user.role === 'admin') {
             AppState.currentAdmin = user;
+            sessionStorage.setItem('user', userStr);
             showAdminPanel();
             return;
         }
@@ -146,6 +151,7 @@ async function adminLogin() {
         if (data.success && data.user.role === 'admin') {
             AppState.currentAdmin = data.user;
             sessionStorage.setItem('user', JSON.stringify(data.user));
+            localStorage.setItem('user', JSON.stringify(data.user));
             showAdminPanel();
             showAlert('Login realizado!', 'success');
         } else {
@@ -168,7 +174,8 @@ function adminLogout() {
     AppState.currentAdmin = null;
     AppState.allRecords = [];
     AppState.allEmployees = [];
-    sessionStorage.clear();
+    sessionStorage.removeItem('user');
+    localStorage.removeItem('user');
     document.getElementById('adminEmail').value = '';
     document.getElementById('adminPassword').value = '';
     showLoginScreen();
@@ -263,31 +270,38 @@ function loadRecentActivity(records) {
 // ==================== COLABORADORES ====================
 async function loadEmployees() {
     try {
-        if (!AppState.allRecords.length) {
-            const res = await fetch(`${API_URL}/records`);
-            AppState.allRecords = (await res.json()).records;
-        }
-        
-        const empMap = {};
-        AppState.allRecords.forEach(r => {
-            if (!empMap[r.user_email]) {
-                empMap[r.user_email] = {
-                    name: r.user_name,
-                    email: r.user_email,
-                    totalRecords: 0,
-                    lastRecord: null
-                };
-            }
-            empMap[r.user_email].totalRecords++;
-            if (!empMap[r.user_email].lastRecord || r.timestamp > empMap[r.user_email].lastRecord.timestamp) {
-                empMap[r.user_email].lastRecord = r;
-            }
+        const [recordsRes, usersRes] = await Promise.all([
+            fetch(`${API_URL}/records`),
+            fetch(`${API_URL}/users?admin_id=${getAdminId()}`)
+        ]);
+
+        const recordsData = await recordsRes.json();
+        const usersData = await usersRes.json();
+
+        if (!recordsRes.ok) throw new Error(recordsData.error || 'Erro ao carregar registros');
+        if (!usersRes.ok) throw new Error(usersData.error || 'Erro ao carregar contas');
+
+        AppState.allRecords = recordsData.records || [];
+
+        const employeeUsers = (usersData.users || []).filter((user) => user.role === 'employee');
+        AppState.allEmployees = employeeUsers.map((user) => {
+            const userRecords = AppState.allRecords.filter((r) => Number(r.user_id) === Number(user.id));
+            const lastRecord = userRecords.length
+                ? userRecords.reduce((latest, current) => (current.timestamp > latest.timestamp ? current : latest), userRecords[0])
+                : null;
+
+            return {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                totalRecords: userRecords.length,
+                lastRecord
+            };
         });
-        
-        AppState.allEmployees = Object.values(empMap);
+
         renderEmployees(AppState.allEmployees);
     } catch (err) {
-        showAlert('Erro ao carregar colaboradores', 'error');
+        showAlert('Erro ao carregar colaboradores: ' + err.message, 'error');
     }
 }
 
@@ -306,7 +320,7 @@ function renderEmployees(employees) {
         const todayCount = AppState.allRecords.filter(r => r.user_email === emp.email && r.date === today).length;
         
         return `
-            <div class="employee-card" onclick="showEmployeeDetails('${emp.email}')">
+            <div class="employee-card" onclick='showEmployeeDetails(${emp.id})'>
                 <div class="employee-header">
                     <div class="employee-avatar">${initials}</div>
                     <div class="employee-info">
@@ -324,6 +338,9 @@ function renderEmployees(employees) {
                         <span class="employee-stat-label">Hoje</span>
                     </div>
                 </div>
+                <div style="margin-top:12px;">
+                    <button class="btn btn-secondary" style="background:#dc2626;color:#fff;width:100%;" onclick='deleteEmployeeAccount(event, ${emp.id}, ${JSON.stringify(emp.name)})'>Excluir Conta</button>
+                </div>
             </div>
         `;
     }).join('');
@@ -337,11 +354,11 @@ function filterEmployees() {
     renderEmployees(filtered);
 }
 
-function showEmployeeDetails(email) {
-    const emp = AppState.allEmployees.find(e => e.email === email);
+function showEmployeeDetails(userId) {
+    const emp = AppState.allEmployees.find(e => Number(e.id) === Number(userId));
     if (!emp) return;
     
-    const empRecords = AppState.allRecords.filter(r => r.user_email === email);
+    const empRecords = AppState.allRecords.filter(r => Number(r.user_id) === Number(emp.id));
     const today = new Date().toLocaleDateString('pt-BR');
     const todayRecords = empRecords.filter(r => r.date === today);
     const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
@@ -876,6 +893,59 @@ function mostrarEspelhoGerado(monthName, espelhoHTML) {
 
 function closeEspelhoResult() {
     document.getElementById('espelhoResultModal')?.remove();
+}
+
+
+async function clearAllRecords() {
+    if (!confirm('Tem certeza que deseja apagar TODOS os registros de ponto? Esta ação não pode ser desfeita.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/records`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: getAdminId() })
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Erro ao limpar registros');
+
+        AppState.allRecords = [];
+        await loadDashboard();
+        if (AppState.currentTab === 'employees') await loadEmployees();
+        if (AppState.currentTab === 'records') loadAllRecords();
+
+        showAlert('Todos os registros foram removidos com sucesso.', 'success');
+    } catch (error) {
+        showAlert('Erro ao limpar registros: ' + error.message, 'error');
+    }
+}
+
+async function deleteEmployeeAccount(event, userId, userName) {
+    event.stopPropagation();
+
+    if (!confirm(`Deseja excluir a conta de ${userName}?
+Todos os registros dessa pessoa também serão removidos.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/users/${userId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ admin_id: getAdminId() })
+        });
+
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Erro ao excluir conta');
+
+        showAlert('Conta excluída com sucesso.', 'success');
+        await loadEmployees();
+        await loadDashboard();
+    } catch (error) {
+        showAlert('Erro ao excluir conta: ' + error.message, 'error');
+    }
 }
 
 // ==================== UTILITÁRIOS ====================
