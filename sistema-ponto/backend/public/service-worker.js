@@ -1,4 +1,6 @@
-const CACHE_NAME = 'ponto-wd-v2';
+const STATIC_CACHE = 'ponto-wd-static-v3';
+const API_CACHE = 'ponto-wd-api-v1';
+
 const APP_SHELL = [
   '/',
   '/login.html',
@@ -10,59 +12,81 @@ const APP_SHELL = [
   '/js/admin.js',
   '/js/pwa.js',
   '/assets/logo.svg',
+  '/assets/app-icon.svg',
   '/manifest.webmanifest'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(APP_SHELL))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  const keep = [STATIC_CACHE, API_CACHE];
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(
-      keys
-        .filter((key) => key !== CACHE_NAME)
-        .map((key) => caches.delete(key))
+      keys.filter((key) => !keep.includes(key)).map((key) => caches.delete(key))
     ))
   );
   self.clients.claim();
 });
 
-function shouldHandleRequest(request) {
+function isSameOrigin(url) {
+  return url.origin === self.location.origin;
+}
+
+function isApiGetToCache(url, request) {
   if (request.method !== 'GET') return false;
+  if (!isSameOrigin(url)) return false;
 
-  const url = new URL(request.url);
-
-  // Não intercepta chamadas de API para evitar cache de dados dinâmicos
-  if (url.pathname.startsWith('/api')) return false;
-
-  // Não intercepta requests de outros domínios (ex.: geocoding)
-  if (url.origin !== self.location.origin) return false;
-
-  return true;
+  return (
+    url.pathname.startsWith('/api/stats') ||
+    url.pathname.startsWith('/api/records')
+  );
 }
 
 self.addEventListener('fetch', (event) => {
-  if (!shouldHandleRequest(event.request)) {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  if (!isSameOrigin(url)) {
+    return;
+  }
+
+  if (isApiGetToCache(url, request)) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(API_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  if (request.method !== 'GET') {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
+    caches.match(request).then((cachedResponse) => {
       if (cachedResponse) return cachedResponse;
 
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
+      return fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(STATIC_CACHE).then((cache) => cache.put(request, clone));
+          }
           return networkResponse;
-        }
-
-        const responseClone = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-        return networkResponse;
-      }).catch(() => caches.match('/login.html'));
+        })
+        .catch(() => caches.match('/login.html'));
     })
   );
 });

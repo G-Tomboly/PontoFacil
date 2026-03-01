@@ -5,10 +5,16 @@
   "start_url": "/login.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#0b1120",
-  "theme_color": "#f59e0b",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "lang": "pt-BR",
   "icons": [
+    {
+      "src": "/assets/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/assets/logo.svg",
       "sizes": "any",

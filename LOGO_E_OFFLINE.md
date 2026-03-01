@@ -1,44 +1,62 @@
-# Logo nova e funcionamento offline (passo a passo)
+# Logo do app com fundo preto + funcionamento offline
 
-## 1) Como trocar sua logo
+## 1) Logo instalada no celular/Desktop (PWA)
 
-Hoje o sistema usa:
-- `sistema-ponto/backend/public/assets/logo.svg`
+Foi adicionado um ícone específico do app:
+- `sistema-ponto/backend/public/assets/app-icon.svg`
 
-### Opção A (mais simples)
-1. Crie a nova imagem com fundo (PNG recomendado, ex.: `logo.png`).
-2. Salve em: `sistema-ponto/backend/public/assets/logo.png`.
-3. Troque as referências `logo.svg` para `logo.png` nos HTMLs e no `manifest.webmanifest`.
+Esse arquivo coloca:
+- **fundo preto** (`#000`),
+- sua **logo branca por cima**.
 
-### Opção B (manter SVG)
-- Se quiser manter SVG, abra o arquivo e adicione um fundo no próprio desenho.
+O manifesto do PWA já aponta para esse ícone, então ao instalar o app ele usa essa versão com contraste melhor.
 
-## 2) O que já foi feito para ajudar visualmente a logo branca
+> Se o app já estava instalado, desinstale e instale novamente para atualizar o ícone.
 
-Mesmo com logo transparente, foi aplicado:
-- fundo em gradiente atrás da logo,
-- borda suave,
-- espaçamento interno,
-- `object-fit: contain`.
+---
 
-Assim a logo branca aparece melhor no tema escuro.
+## 2) O que agora funciona offline (passo a passo)
 
-## 3) Offline de verdade: como está funcionando
+### 2.1 App shell offline (telas e arquivos)
+O Service Worker cacheia os arquivos principais:
+- `login.html`, `index.html`, `admin.html`, CSS e JS.
 
-Implementado no app do funcionário (`public/js/app.js`):
-- Se estiver sem internet, o registro de ponto é salvo localmente em fila (`localStorage`).
-- Quando a internet volta, os registros pendentes são sincronizados automaticamente com a API.
-- A tela de “Meus registros de hoje” mostra também os itens pendentes de sincronização.
-- Registros já buscados online ficam em cache local para visualização offline.
+Assim o app abre mesmo sem internet (depois da primeira visita online).
 
-## 4) Limitação importante
+### 2.2 Dados GET offline
+Também foi adicionado cache de chamadas GET da API:
+- `/api/stats`
+- `/api/records...`
 
-- Login/cadastro novo ainda dependem do servidor.
-- O modo offline cobre principalmente: **registrar ponto** e **ver registros já carregados/cacheados**.
+Estratégia: tenta rede primeiro; se falhar, devolve cache.
 
-## 5) Como evoluir para offline avançado (opcional)
+### 2.3 Registro de ponto offline (POST)
+Quando não há internet:
+1. o registro é salvo em fila local (`localStorage`),
+2. aparece como pendente,
+3. ao voltar conexão, sincroniza automaticamente.
 
-Para ficar ainda mais robusto:
-- migrar fila de `localStorage` para `IndexedDB` (suporta volume maior),
-- usar `Background Sync` quando disponível,
-- criptografar dados sensíveis salvos offline.
+### 2.4 Login offline
+No primeiro login online válido, o app salva credenciais offline deste dispositivo.
+Depois, sem internet, se email/senha baterem com o cache local, o login entra em modo offline.
+
+---
+
+## 3) Limite real de “100% offline”
+
+Sem backend online não existe sincronização global instantânea entre dispositivos.
+O que está implementado é o máximo prático para esse projeto sem reescrever arquitetura:
+- usar local no dispositivo enquanto offline,
+- sincronizar quando voltar internet.
+
+---
+
+## 4) Como validar rápido
+
+1. Abra online e faça login.
+2. Registre um ponto online.
+3. Desligue internet (modo avião / devtools offline).
+4. Faça novo registro (deve salvar pendente).
+5. Ligue internet novamente.
+6. Aguarde sincronizar automático.
+

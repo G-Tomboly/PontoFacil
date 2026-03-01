@@ -1,4 +1,5 @@
 const API_URL = '/api';
+const OFFLINE_AUTH_KEY = 'offlineAuthProfile';
 
 document.addEventListener('DOMContentLoaded', function() {
     console.log('📝 Página de login carregada');
@@ -21,6 +22,35 @@ function showTab(tab) {
     } else {
         tabs[1].classList.add('active');
         document.getElementById('registerForm').classList.add('active');
+    }
+}
+
+function saveOfflineAuth(user, email, password) {
+    const payload = {
+        user,
+        email,
+        passwordToken: btoa(unescape(encodeURIComponent(password))),
+        updatedAt: Date.now()
+    };
+    localStorage.setItem(OFFLINE_AUTH_KEY, JSON.stringify(payload));
+}
+
+function tryOfflineLogin(email, password) {
+    try {
+        const raw = localStorage.getItem(OFFLINE_AUTH_KEY);
+        if (!raw) return null;
+
+        const cached = JSON.parse(raw);
+        const token = btoa(unescape(encodeURIComponent(password)));
+
+        if (cached.email === email && cached.passwordToken === token && cached.user) {
+            return cached.user;
+        }
+
+        return null;
+    } catch (error) {
+        console.warn('Falha ao validar login offline:', error);
+        return null;
     }
 }
 
@@ -49,6 +79,7 @@ async function handleLogin() {
             // Salva dados do usuário
             sessionStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('user', JSON.stringify(data.user));
+            saveOfflineAuth(data.user, email, password);
             
             // Redireciona
             if (data.user.role === 'admin') {
@@ -60,7 +91,22 @@ async function handleLogin() {
             showAlert(data.error || 'Email ou senha inválidos', 'error');
         }
     } catch (err) {
-        showAlert('Erro ao fazer login. Verifique sua conexão.', 'error');
+        const offlineUser = tryOfflineLogin(email, password);
+
+        if (offlineUser) {
+            sessionStorage.setItem('user', JSON.stringify(offlineUser));
+            localStorage.setItem('user', JSON.stringify(offlineUser));
+            showAlert('📴 Login offline ativado com dados já salvos neste dispositivo.', 'success');
+
+            if (offlineUser.role === 'admin') {
+                window.location.href = 'admin.html';
+            } else {
+                window.location.href = 'index.html';
+            }
+            return;
+        }
+
+        showAlert('Erro ao fazer login. Sem conexão e sem credenciais offline salvas.', 'error');
         console.error('Erro:', err);
     }
 }
