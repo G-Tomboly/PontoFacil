@@ -48,6 +48,7 @@ async function handleLogin() {
         if (data.success) {
             // Salva dados do usuário
             sessionStorage.setItem('user', JSON.stringify(data.user));
+            localStorage.setItem('user', JSON.stringify(data.user));
             
             // Redireciona
             if (data.user.role === 'admin') {
