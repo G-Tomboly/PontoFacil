@@ -1,0 +1,19 @@
+{
+  "name": "WD Manutenções - Sistema de Ponto",
+  "short_name": "Ponto WD",
+  "description": "Controle de ponto com foto e geolocalização.",
+  "start_url": "/login.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#f59e0b",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
