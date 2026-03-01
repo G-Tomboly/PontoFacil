@@ -485,7 +485,6 @@ async function loadMyRecords() {
         let records = [];
 
         if (navigator.onLine) {
-        updateConnectionBadge(true);
             const response = await fetch(`${API_URL}/records/user/${currentUser.id}`);
             const data = await response.json();
             records = data.records || [];
