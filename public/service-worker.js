@@ -12,6 +12,7 @@ const APP_SHELL = [
   '/js/admin.js',
   '/js/pwa.js',
   '/assets/logo.svg',
+  '/assets/app-icon.svg',
   '/manifest.webmanifest'
 ];
 

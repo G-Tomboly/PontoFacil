@@ -397,9 +397,10 @@ body {
     align-items: center;
     gap: 20px;
 }
+
 .header-logo {
-    width: 200px;
-    height: 200px;
+    width: 180px;
+    height: 180px;
     padding: 16px;
     background: radial-gradient(circle, rgba(255, 215, 0, 0.16) 0%, rgba(0, 0, 0, 0.4) 100%);
     border: 1px solid rgba(255, 215, 0, 0.2);
@@ -407,6 +408,7 @@ body {
     object-fit: contain;
     filter: drop-shadow(0 5px 15px rgba(255, 215, 0, 0.3));
 }
+
 .header-text h1 {
     font-size: 28px;
     font-weight: 900;

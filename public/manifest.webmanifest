@@ -10,7 +10,7 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/assets/logo.svg",
+      "src": "/assets/app-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
