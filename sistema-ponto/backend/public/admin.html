@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f59e0b">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="apple-touch-icon" href="assets/logo.svg">
     <title>Admin - WD Manutenções</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
@@ -182,6 +185,15 @@
                         <p class="empty-state">Carregando atividades...</p>
                     </div>
                 </div>
+
+                <div class="activity-card" style="margin-top:20px;">
+                    <h2>⚙️ Administração</h2>
+                    <p style="margin-bottom: 15px; color: rgba(255,255,255,0.7);">Use com cuidado: essas ações impactam todos os colaboradores.</p>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                        <button onclick="clearAllRecords()" class="btn btn-secondary" style="background:#dc2626;color:#fff;">🗑️ Limpar Todos os Registros</button>
+                        <button onclick="loadEmployees()" class="btn btn-secondary">🔄 Atualizar Contas</button>
+                    </div>
+                </div>
             </div>
 
             <!-- ABA: Colaboradores -->
@@ -337,6 +349,7 @@
         </svg>
     </button>
 
+    <script src="js/pwa.js"></script>
     <script src="js/admin.js"></script>
 </body>
 </html>

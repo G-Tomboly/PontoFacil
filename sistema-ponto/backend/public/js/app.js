@@ -1,10 +1,13 @@
-const API_URL = 'http://localhost:3000/api';
+const API_URL = '/api';
 
 // Estado da aplicação
 let currentUser = null;
 let currentPhoto = null;
 let currentLocation = null;
 let stream = null;
+
+const OFFLINE_RECORDS_KEY = 'offlineRecordsQueue';
+const CACHED_RECORDS_KEY = 'cachedRecordsByUser';
 
 // Inicializa o sistema
 document.addEventListener('DOMContentLoaded', function() {
@@ -27,7 +30,13 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Controla exibição dos botões de scroll
     window.addEventListener('scroll', handleScrollButtons);
+    window.addEventListener('online', handleConnectivityChange);
+    window.addEventListener('offline', handleConnectivityChange);
+    handleConnectivityChange(true);
     handleScrollButtons(); // Chama imediatamente para configurar estado inicial
+
+    // Tenta sincronizar registros pendentes ao iniciar
+    syncOfflineRecords();
 });
 
 // Controla visibilidade dos botões de scroll
@@ -87,7 +96,7 @@ async function testServerConnection() {
 
 // Verifica autenticação
 function checkAuth() {
-    const userStr = sessionStorage.getItem('user');
+    const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
     
     if (!userStr) {
         window.location.href = 'login.html';
@@ -95,6 +104,7 @@ function checkAuth() {
     }
     
     currentUser = JSON.parse(userStr);
+    sessionStorage.setItem('user', userStr);
     
     // Verifica se é admin tentando acessar área de funcionário
     if (currentUser.role === 'admin') {
@@ -435,38 +445,32 @@ async function confirmRegister() {
     });
     
     try {
-        const response = await fetch(`${API_URL}/record`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(recordData)
-        });
-        
-        console.log('📥 Resposta recebida. Status:', response.status);
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('❌ Resposta de erro:', errorText);
-            throw new Error(`Servidor retornou erro ${response.status}: ${errorText}`);
-        }
-        
-        const data = await response.json();
-        console.log('✓ Resposta do servidor:', data);
-        
-        if (data.success) {
-            console.log('✓✓✓ PONTO REGISTRADO COM SUCESSO!');
-            showAlert('✅ Ponto registrado com sucesso!', 'success');
+        if (!navigator.onLine) {
+            queueOfflineRecord(recordData);
+            showAlert('📴 Sem internet: registro salvo e será sincronizado automaticamente.', 'success');
             closeRegisterModal();
-            setTimeout(() => {
-                loadMyRecords();
-            }, 500);
-        } else {
-            throw new Error(data.error || 'Erro desconhecido ao registrar');
+            loadMyRecords();
+            return;
         }
+
+        await submitRecordToApi(recordData);
+        console.log('✓✓✓ PONTO REGISTRADO COM SUCESSO!');
+        showAlert('✅ Ponto registrado com sucesso!', 'success');
+        closeRegisterModal();
+        setTimeout(() => {
+            loadMyRecords();
+        }, 500);
     } catch (err) {
         console.error('❌❌❌ ERRO COMPLETO:', err);
+
+        if (!navigator.onLine || err.message.includes('Failed to fetch')) {
+            queueOfflineRecord(recordData);
+            showAlert('📴 Sem conexão com servidor: registro salvo para sincronizar depois.', 'success');
+            closeRegisterModal();
+            loadMyRecords();
+            return;
+        }
+
         showAlert('❌ Erro ao registrar: ' + err.message, 'error');
         btnConfirm.disabled = false;
         btnConfirm.textContent = '✓ CONFIRMAR REGISTRO';
@@ -476,17 +480,33 @@ async function confirmRegister() {
 // Carrega registros do usuário
 async function loadMyRecords() {
     try {
-        const response = await fetch(`${API_URL}/records/user/${currentUser.id}`);
-        const data = await response.json();
-        
+        let records = [];
+
+        if (navigator.onLine) {
+            const response = await fetch(`${API_URL}/records/user/${currentUser.id}`);
+            const data = await response.json();
+            records = data.records || [];
+            cacheUserRecords(currentUser.id, records);
+        } else {
+            records = getCachedUserRecords(currentUser.id);
+        }
+
         const today = new Date().toLocaleDateString('pt-BR');
-        const todayRecords = data.records.filter(r => r.date === today);
-        
-        renderRecords(todayRecords);
+        const todayRecords = records.filter(r => r.date === today);
+        const offlinePending = getOfflineRecordsByUser(currentUser.id).filter(r => r.date === today);
+
+        const pendingRecords = offlinePending.map((record) => ({
+            ...record,
+            isOfflinePending: true,
+            time: record.time || new Date(record.timestamp || Date.now()).toLocaleTimeString('pt-BR')
+        }));
+
+        renderRecords([...todayRecords, ...pendingRecords]);
     } catch (err) {
         console.error('Erro ao carregar registros:', err);
-        document.getElementById('recordsList').innerHTML = 
-            '<p class="empty-state">Erro ao carregar registros</p>';
+        const fallback = getCachedUserRecords(currentUser.id);
+        const today = new Date().toLocaleDateString('pt-BR');
+        renderRecords(fallback.filter(r => r.date === today));
     }
 }
 
@@ -505,7 +525,7 @@ function renderRecords(records) {
                 <span class="record-badge badge-${record.type.replace('_', '-')}">
                     ${getTypeLabel(record.type)}
                 </span>
-                <span class="record-date">${record.date}</span>
+                <span class="record-date">${record.date}${record.isOfflinePending ? ' • pendente de sync' : ''}</span>
             </div>
             <span class="record-time">${record.time}</span>
         </div>
@@ -521,6 +541,112 @@ function getTypeLabel(type) {
         'saida': '🔴 Saída'
     };
     return labels[type] || type;
+}
+
+
+async function submitRecordToApi(recordData) {
+    const response = await fetch(`${API_URL}/record`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(recordData)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Servidor retornou erro ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) {
+        throw new Error(data.error || 'Erro desconhecido ao registrar');
+    }
+
+    return data;
+}
+
+function getOfflineQueue() {
+    try {
+        return JSON.parse(localStorage.getItem(OFFLINE_RECORDS_KEY) || '[]');
+    } catch {
+        return [];
+    }
+}
+
+function saveOfflineQueue(queue) {
+    localStorage.setItem(OFFLINE_RECORDS_KEY, JSON.stringify(queue));
+}
+
+function queueOfflineRecord(recordData) {
+    const queue = getOfflineQueue();
+    queue.push({
+        ...recordData,
+        offlineId: `offline-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        date: new Date().toLocaleDateString('pt-BR'),
+        time: new Date().toLocaleTimeString('pt-BR'),
+        timestamp: Date.now()
+    });
+    saveOfflineQueue(queue);
+}
+
+function getOfflineRecordsByUser(userId) {
+    return getOfflineQueue().filter(record => Number(record.user_id) === Number(userId));
+}
+
+function getCachedRecordsMap() {
+    try {
+        return JSON.parse(localStorage.getItem(CACHED_RECORDS_KEY) || '{}');
+    } catch {
+        return {};
+    }
+}
+
+function cacheUserRecords(userId, records) {
+    const cached = getCachedRecordsMap();
+    cached[userId] = records;
+    localStorage.setItem(CACHED_RECORDS_KEY, JSON.stringify(cached));
+}
+
+function getCachedUserRecords(userId) {
+    const cached = getCachedRecordsMap();
+    return cached[userId] || [];
+}
+
+async function syncOfflineRecords() {
+    if (!navigator.onLine) return;
+
+    const queue = getOfflineQueue();
+    if (!queue.length) return;
+
+    const failed = [];
+
+    for (const record of queue) {
+        try {
+            await submitRecordToApi(record);
+        } catch (error) {
+            failed.push(record);
+        }
+    }
+
+    saveOfflineQueue(failed);
+
+    if (failed.length === 0) {
+        showAlert('☁️ Registros offline sincronizados com sucesso!', 'success');
+        loadMyRecords();
+    }
+}
+
+function handleConnectivityChange(isInitial = false) {
+    if (navigator.onLine) {
+        if (!isInitial) {
+            showAlert('🌐 Conexão restabelecida. Sincronizando registros...', 'success');
+        }
+        syncOfflineRecords();
+    } else if (!isInitial) {
+        showAlert('📴 Você está offline. Novos registros serão salvos localmente.', 'error');
+    }
 }
 
 // Alerta visual
