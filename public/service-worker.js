@@ -18,7 +18,7 @@ const APP_SHELL = [
   '/js/admin.js',
   '/js/pwa.js',
   '/assets/logo.svg',
-  '/assets/app-icon.svg',
+  '/assets/logo.svg',
   '/manifest.webmanifest'
 ];
 
@@ -84,8 +84,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: '/assets/app-icon.svg',
-      badge: '/assets/app-icon.svg'
+      icon: '/assets/logo.svg',
+      badge: '/assets/logo.svg'
     })
   );
 });
