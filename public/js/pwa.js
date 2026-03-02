@@ -2,7 +2,7 @@
   if (!('serviceWorker' in navigator)) {
     return;
   }
-
+// teste
   window.addEventListener('load', async () => {
     try {
       await navigator.serviceWorker.register('/service-worker.js');
