@@ -8,7 +8,6 @@ let stream = null;
 
 const OFFLINE_RECORDS_KEY = 'offlineRecordsQueue';
 const CACHED_RECORDS_KEY = 'cachedRecordsByUser';
-const CONNECTION_BADGE_ID = 'connectionBadge';
 
 // Inicializa o sistema
 document.addEventListener('DOMContentLoaded', function() {
@@ -33,7 +32,6 @@ document.addEventListener('DOMContentLoaded', function() {
     window.addEventListener('scroll', handleScrollButtons);
     window.addEventListener('online', handleConnectivityChange);
     window.addEventListener('offline', handleConnectivityChange);
-    ensureConnectionBadge();
     handleConnectivityChange(true);
     handleScrollButtons(); // Chama imediatamente para configurar estado inicial
 
@@ -639,54 +637,19 @@ async function syncOfflineRecords() {
         loadMyRecords();
     }
 }
+
 function handleConnectivityChange(isInitial = false) {
-    ensureConnectionBadge();
     if (navigator.onLine) {
-        updateConnectionBadge(true);
         if (!isInitial) {
             showAlert('🌐 Conexão restabelecida. Sincronizando registros...', 'success');
         }
         syncOfflineRecords();
-    } else {
-        updateConnectionBadge(false);
-        if (isInitial) return;
+    } else if (!isInitial) {
         showAlert('📴 Você está offline. Novos registros serão salvos localmente.', 'error');
     }
 }
 
 // Alerta visual
-
-function ensureConnectionBadge() {
-    if (document.getElementById(CONNECTION_BADGE_ID)) return;
-
-    const badge = document.createElement('div');
-    badge.id = CONNECTION_BADGE_ID;
-    badge.style.cssText = `
-        position: fixed;
-        left: 20px;
-        bottom: 20px;
-        z-index: 9999;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-        transition: all 0.25s ease;
-    `;
-
-    document.body.appendChild(badge);
-}
-
-function updateConnectionBadge(isOnline) {
-    const badge = document.getElementById(CONNECTION_BADGE_ID);
-    if (!badge) return;
-
-    badge.textContent = isOnline ? '🌐 ONLINE' : '📴 OFFLINE';
-    badge.style.background = isOnline ? '#10b981' : '#ef4444';
-    badge.style.color = '#fff';
-}
-
 function showAlert(message, type = 'success') {
     const alert = document.createElement('div');
     alert.style.cssText = `

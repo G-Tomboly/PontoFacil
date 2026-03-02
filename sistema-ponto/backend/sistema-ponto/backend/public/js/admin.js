@@ -1,5 +1,5 @@
 const API_URL = '/api';
-const ADMIN_CONNECTION_BADGE_ID = 'adminConnectionBadge';
+
 // ==================== FERIADOS NACIONAIS ====================
 const FERIADOS = [
     '2025-01-01', '2025-02-24', '2025-02-25', '2025-04-18', '2025-04-21',
@@ -102,45 +102,8 @@ document.addEventListener('DOMContentLoaded', function() {
     checkAdminAuth();
     setupEventListeners();
     window.addEventListener('scroll', handleScrollButtons);
-    window.addEventListener('online', updateAdminConnectionBadge);
-    window.addEventListener('offline', updateAdminConnectionBadge);
-    ensureAdminConnectionBadge();
-    updateAdminConnectionBadge();
     handleScrollButtons();
 });
-
-
-function ensureAdminConnectionBadge() {
-    if (document.getElementById(ADMIN_CONNECTION_BADGE_ID)) return;
-
-    const badge = document.createElement('div');
-    badge.id = ADMIN_CONNECTION_BADGE_ID;
-    badge.style.cssText = `
-        position: fixed;
-        left: 20px;
-        bottom: 20px;
-        z-index: 9999;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.4px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-        transition: all 0.25s ease;
-    `;
-
-    document.body.appendChild(badge);
-}
-
-function updateAdminConnectionBadge() {
-    const badge = document.getElementById(ADMIN_CONNECTION_BADGE_ID);
-    if (!badge) return;
-
-    const online = navigator.onLine;
-    badge.textContent = online ? '🌐 ONLINE' : '📴 OFFLINE';
-    badge.style.background = online ? '#10b981' : '#ef4444';
-    badge.style.color = '#fff';
-}
 
 function checkAdminAuth() {
     const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');

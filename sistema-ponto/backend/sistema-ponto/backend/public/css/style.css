@@ -397,6 +397,7 @@ body {
     align-items: center;
     gap: 20px;
 }
+
 .header-logo {
     width: 180px;
     height: 180px;
@@ -407,7 +408,6 @@ body {
     object-fit: contain;
     filter: drop-shadow(0 5px 15px rgba(255, 215, 0, 0.3));
 }
-
 
 .header-text h1 {
     font-size: 28px;
