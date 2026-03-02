@@ -9,204 +9,134 @@ let stream = null;
 const OFFLINE_RECORDS_KEY = 'offlineRecordsQueue';
 const CACHED_RECORDS_KEY = 'cachedRecordsByUser';
 
-// Inicializa o sistema
+// ==================== INICIALIZAÇÃO ====================
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Sistema WD Manutenções iniciando...');
-    console.log('API URL:', API_URL);
-    
-    // Garante que o scroll funcione
+
     document.body.style.overflow = 'auto';
     document.documentElement.style.overflow = 'auto';
-    
-    // Testa conexão com servidor
-    testServerConnection();
-    
-    // Verifica se está logado
+
     checkAuth();
-    
-    // Atualiza relógio
     updateClock();
     setInterval(updateClock, 1000);
-    
-    // Controla exibição dos botões de scroll
-    window.addEventListener('scroll', handleScrollButtons);
-    window.addEventListener('online', handleConnectivityChange);
-    window.addEventListener('offline', handleConnectivityChange);
-    handleConnectivityChange(true);
-    handleScrollButtons(); // Chama imediatamente para configurar estado inicial
 
-    // Tenta sincronizar registros pendentes ao iniciar
+    window.addEventListener('scroll', handleScrollButtons);
+    window.addEventListener('online', () => handleConnectivityChange('online'));
+    window.addEventListener('offline', () => handleConnectivityChange('offline'));
+
+    handleScrollButtons();
+
+    // Escuta mensagens do Service Worker (sync em background)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data?.type === 'SYNC_COMPLETE') {
+                const count = event.data.synced;
+                showAlert(`☁️ ${count} registro(s) offline sincronizado(s) com sucesso!`, 'success');
+                loadMyRecords();
+            }
+        });
+    }
+
+    // Tenta sincronizar registros pendentes no localStorage ao iniciar
     syncOfflineRecords();
 });
 
-// Controla visibilidade dos botões de scroll
-function handleScrollButtons() {
-    const scrollToTop = document.getElementById('scrollToTop');
-    const scrollToBottom = document.getElementById('scrollToBottom');
-    
-    if (!scrollToTop || !scrollToBottom) return;
-    
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-    const documentHeight = document.documentElement.scrollHeight;
-    
-    // Mostra botão "voltar ao topo" após rolar 300px
-    if (scrollTop > 300) {
-        scrollToTop.classList.add('visible');
-    } else {
-        scrollToTop.classList.remove('visible');
-    }
-    
-    // Esconde botão "ir para baixo" quando está no final da página
-    if (scrollTop + windowHeight >= documentHeight - 100) {
-        scrollToBottom.style.display = 'none';
-    } else {
-        scrollToBottom.style.display = 'flex';
-    }
-}
-
-// Scroll suave para o topo
-function scrollToTop() {
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    });
-}
-
-// Scroll suave para baixo
-function scrollToBottom() {
-    window.scrollTo({
-        top: document.documentElement.scrollHeight,
-        behavior: 'smooth'
-    });
-}
-
-// Testa conexão com servidor
-async function testServerConnection() {
-    try {
-        console.log('🔌 Testando conexão com servidor...');
-        const response = await fetch(`${API_URL}/stats`);
-        const data = await response.json();
-        console.log('✓ Servidor conectado!', data);
-    } catch (err) {
-        console.error('❌ Servidor offline ou inacessível:', err);
-        showAlert('⚠️ Servidor offline! Inicie o backend com: npm start', 'error');
-    }
-}
-
-// Verifica autenticação
+// ==================== AUTENTICAÇÃO ====================
 function checkAuth() {
     const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
-    
+
     if (!userStr) {
         window.location.href = 'login.html';
         return;
     }
-    
+
     currentUser = JSON.parse(userStr);
     sessionStorage.setItem('user', userStr);
-    
-    // Verifica se é admin tentando acessar área de funcionário
+
     if (currentUser.role === 'admin') {
         window.location.href = 'admin.html';
         return;
     }
-    
-    // Atualiza interface
+
     document.getElementById('userName').textContent = currentUser.name;
     document.getElementById('userEmail').textContent = currentUser.email;
-    
-    // Carrega registros
+
+    // Mostra badge offline se necessário
+    updateOfflineBadge();
     loadMyRecords();
 }
 
-// Atualiza o relógio
+function logout() {
+    if (!confirm('Deseja realmente sair do sistema?')) return;
+    sessionStorage.clear();
+    localStorage.removeItem('user');
+    // Mantém a fila offline e o cache — não limpa tudo!
+    window.location.href = 'login.html';
+}
+
+// ==================== RELÓGIO ====================
 function updateClock() {
     const now = new Date();
-    const timeString = now.toLocaleTimeString('pt-BR');
+    document.getElementById('currentTime').textContent = now.toLocaleTimeString('pt-BR');
     const dateString = now.toLocaleDateString('pt-BR', {
-        weekday: 'long',
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric'
+        weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
     });
-    
-    document.getElementById('currentTime').textContent = timeString;
-    document.getElementById('currentDate').textContent = dateString.charAt(0).toUpperCase() + dateString.slice(1);
+    document.getElementById('currentDate').textContent =
+        dateString.charAt(0).toUpperCase() + dateString.slice(1);
 }
 
-// Logout
-function logout() {
-    const confirmLogout = confirm('Deseja realmente sair do sistema?');
-    console.log('Logout clicado. Confirmou?', confirmLogout);
-    
-    if (confirmLogout) {
-        sessionStorage.clear();
-        localStorage.clear();
-        console.log('Sessão limpa. Redirecionando...');
-        window.location.href = 'login.html';
-    }
-}
-
-// Abre modal de registro
+// ==================== MODAL DE REGISTRO ====================
 async function openRegisterModal() {
-    console.log('🎬 Abrindo modal de registro...');
-    console.log('Usuário atual:', currentUser);
-    
     document.getElementById('registerModal').classList.remove('hidden');
-    
-    // Reseta estado
+
     currentPhoto = null;
     currentLocation = null;
     document.getElementById('btnConfirm').disabled = true;
-    
-    // Inicia câmera
+    document.getElementById('photoPreview').classList.add('hidden');
+    document.getElementById('btnCapture').classList.remove('hidden');
+    document.getElementById('btnRetake').classList.add('hidden');
+    document.getElementById('video').style.display = 'block';
+
+    // Mostra aviso se estiver offline
+    if (!navigator.onLine) {
+        document.getElementById('locationInfo').innerHTML = `
+            <p style="color:#FFA500"><strong>📴 Modo Offline</strong></p>
+            <p style="font-size:13px;margin-top:8px;color:rgba(255,255,255,0.7)">
+                O registro será salvo localmente e enviado automaticamente quando você reconectar.
+            </p>
+        `;
+    } else {
+        document.getElementById('locationInfo').innerHTML = '<p>📍 Buscando sua localização...</p>';
+    }
+
     try {
-        console.log('📷 Solicitando acesso à câmera...');
-        stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-                facingMode: 'user',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-            },
-            audio: false 
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: false
         });
-        
+
         const video = document.getElementById('video');
         video.srcObject = stream;
-        
-        // Aguarda o vídeo estar pronto
+
         await new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                console.log('✓ Câmera inicializada:', video.videoWidth, 'x', video.videoHeight);
-                resolve();
-            };
+            video.onloadedmetadata = resolve;
         });
-        
-        document.getElementById('locationInfo').innerHTML = '<p>📍 Buscando sua localização...</p>';
-        console.log('✓ Câmera pronta!');
     } catch (err) {
-        console.error('❌ Erro ao acessar câmera:', err);
         showAlert('❌ Erro ao acessar câmera: ' + err.message, 'error');
         return;
     }
-    
-    // Busca localização
-    console.log('📍 Iniciando busca de localização...');
+
     getLocation();
 }
 
-// Fecha modal de registro
 function closeRegisterModal() {
     document.getElementById('registerModal').classList.add('hidden');
-    
-    // Para câmera
+
     if (stream) {
         stream.getTracks().forEach(track => track.stop());
         stream = null;
     }
-    
-    // Reset
+
     currentPhoto = null;
     currentLocation = null;
     document.getElementById('photoPreview').classList.add('hidden');
@@ -216,39 +146,32 @@ function closeRegisterModal() {
     document.getElementById('btnConfirm').disabled = true;
 }
 
-// Captura foto
+// ==================== CÂMERA ====================
 function capturePhoto() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    const photo = document.getElementById('capturedPhoto');
-    
-    // Verifica se o vídeo está carregado
+
     if (!video.videoWidth || !video.videoHeight) {
         showAlert('Aguarde a câmera inicializar...', 'error');
         return;
     }
-    
+
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0);
-    
+    canvas.getContext('2d').drawImage(video, 0, 0);
+
     currentPhoto = canvas.toDataURL('image/jpeg', 0.8);
-    
-    photo.src = currentPhoto;
+
+    document.getElementById('capturedPhoto').src = currentPhoto;
     document.getElementById('photoPreview').classList.remove('hidden');
     document.getElementById('video').style.display = 'none';
     document.getElementById('btnCapture').classList.add('hidden');
     document.getElementById('btnRetake').classList.remove('hidden');
-    
-    // Sempre habilita o botão depois de capturar foto
     document.getElementById('btnConfirm').disabled = false;
-    
-    showAlert('✓ Foto capturada com sucesso!', 'success');
+
+    showAlert('✓ Foto capturada!', 'success');
 }
 
-// Tirar outra foto
 function retakePhoto() {
     currentPhoto = null;
     document.getElementById('photoPreview').classList.add('hidden');
@@ -258,250 +181,165 @@ function retakePhoto() {
     document.getElementById('btnConfirm').disabled = true;
 }
 
-// Busca localização
+// ==================== GEOLOCALIZAÇÃO ====================
 function getLocation() {
-    console.log('📍 Iniciando busca de localização...');
-    
     if (!navigator.geolocation) {
-        console.warn('⚠️ Geolocalização não suportada');
-        document.getElementById('locationInfo').innerHTML = 
-            '<p style="color: #FFA500;">⚠️ Seu navegador não suporta geolocalização</p>';
-        // Permite continuar sem localização
+        document.getElementById('locationInfo').innerHTML =
+            '<p style="color:#FFA500">⚠️ Geolocalização não suportada neste navegador</p>';
         currentLocation = null;
         return;
     }
-    
-    // Mostra estado de carregamento
+
     document.getElementById('locationInfo').innerHTML = `
-        <p style="color: var(--wd-yellow);"><strong>📍 Buscando localização...</strong></p>
-        <p style="font-size: 13px; margin-top: 8px; color: rgba(255,255,255,0.6);">
-            Isso pode levar alguns segundos
-        </p>
+        <p style="color:var(--wd-yellow)"><strong>📍 Buscando localização...</strong></p>
+        <p style="font-size:13px;margin-top:8px;color:rgba(255,255,255,0.6)">Pode levar alguns segundos</p>
     `;
-    
-    // Opções mais permissivas
-    const options = {
-        enableHighAccuracy: false, // Mudado para false - mais rápido
-        timeout: 15000, // 15 segundos
-        maximumAge: 60000 // Aceita cache de até 1 minuto
-    };
-    
+
     navigator.geolocation.getCurrentPosition(
         async (position) => {
-            console.log('✓ Localização obtida:', position.coords);
-            
             currentLocation = {
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude
             };
-            
+
             document.getElementById('locationInfo').innerHTML = `
-                <p><strong>📍 Localização Obtida!</strong></p>
-                <p style="font-size: 14px; margin-top: 8px; color: rgba(255,255,255,0.8);">
+                <p><strong>📍 Localização obtida!</strong></p>
+                <p style="font-size:14px;margin-top:8px">
                     Lat: ${currentLocation.latitude.toFixed(6)}, Lon: ${currentLocation.longitude.toFixed(6)}
                 </p>
-                <p style="font-size: 13px; margin-top: 8px; color: rgba(255,255,255,0.6);">
-                    🔄 Buscando endereço...
-                </p>
             `;
-            
-            // Tenta buscar endereço (mas não trava se falhar)
-            try {
-                const response = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLocation.latitude}&lon=${currentLocation.longitude}`,
-                    {
-                        headers: {
-                            'User-Agent': 'WD-Manutencoes-Sistema-Ponto',
-                            'Accept-Language': 'pt-BR,pt;q=0.9'
-                        }
+
+            // Tenta obter endereço (apenas se online)
+            if (navigator.onLine) {
+                try {
+                    const res = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLocation.latitude}&lon=${currentLocation.longitude}`,
+                        { headers: { 'User-Agent': 'WD-Manutencoes-Ponto', 'Accept-Language': 'pt-BR' } }
+                    );
+                    if (res.ok) {
+                        const data = await res.json();
+                        currentLocation.address = data.display_name;
+                        document.getElementById('locationInfo').innerHTML = `
+                            <p><strong>📍 Localização capturada:</strong></p>
+                            <p style="font-size:14px;margin-top:8px;line-height:1.6">${currentLocation.address}</p>
+                        `;
                     }
-                );
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    currentLocation.address = data.display_name;
-                    
-                    console.log('✓ Endereço encontrado:', currentLocation.address);
-                    
-                    document.getElementById('locationInfo').innerHTML = `
-                        <p><strong>📍 Localização Capturada:</strong></p>
-                        <p style="font-size: 14px; margin-top: 8px; line-height: 1.6;">${currentLocation.address}</p>
-                    `;
-                } else {
-                    throw new Error('API retornou erro');
+                } catch {
+                    currentLocation.address = `Lat: ${currentLocation.latitude.toFixed(6)}, Lon: ${currentLocation.longitude.toFixed(6)}`;
                 }
-            } catch (err) {
-                console.warn('⚠️ Não foi possível obter endereço:', err);
-                currentLocation.address = `Lat: ${currentLocation.latitude.toFixed(6)}, Lon: ${currentLocation.longitude.toFixed(6)}`;
-                
-                document.getElementById('locationInfo').innerHTML = `
-                    <p><strong>📍 Coordenadas:</strong></p>
-                    <p style="font-size: 14px; margin-top: 8px;">${currentLocation.address}</p>
-                    <p style="font-size: 12px; margin-top: 8px; color: rgba(255,255,255,0.5);">
-                        ℹ️ Não foi possível obter o endereço, mas as coordenadas foram salvas
-                    </p>
-                `;
+            } else {
+                currentLocation.address = `Lat: ${currentLocation.latitude.toFixed(6)}, Lon: ${currentLocation.longitude.toFixed(6)} (offline)`;
             }
-            
-            // Se já tiver foto, habilita botão
-            if (currentPhoto) {
-                document.getElementById('btnConfirm').disabled = false;
-            }
+
+            if (currentPhoto) document.getElementById('btnConfirm').disabled = false;
         },
         (error) => {
-            console.error('❌ Erro de geolocalização:', error);
-            
-            let errorMessage = '';
-            let errorTip = '';
-            
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    errorMessage = '🚫 Você negou acesso à localização';
-                    errorTip = 'Clique no ícone de localização na barra de endereço e permita o acesso.';
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    errorMessage = '📡 Localização indisponível no momento';
-                    errorTip = 'Verifique se o GPS/Wi-Fi está ativado e tente novamente.';
-                    break;
-                case error.TIMEOUT:
-                    errorMessage = '⏱️ Tempo esgotado ao buscar localização';
-                    errorTip = 'Tente novamente clicando no botão abaixo.';
-                    break;
-                default:
-                    errorMessage = '❌ Erro desconhecido ao buscar localização';
-                    errorTip = 'Tente novamente ou continue sem localização.';
-            }
-            
+            console.warn('Geolocalização falhou:', error.code);
+            const msgs = {
+                1: '🚫 Permissão de localização negada. Você pode continuar sem ela.',
+                2: '📡 Localização indisponível no momento.',
+                3: '⏱️ Tempo esgotado ao buscar localização.'
+            };
             document.getElementById('locationInfo').innerHTML = `
-                <p style="color: #FFA500;"><strong>⚠️ Localização Não Disponível</strong></p>
-                <p style="font-size: 13px; margin-top: 8px; line-height: 1.5;">${errorMessage}</p>
-                <p style="font-size: 12px; margin-top: 8px; color: rgba(255,255,255,0.6);">${errorTip}</p>
-                <button onclick="getLocation()" class="btn btn-secondary" style="margin-top: 15px; width: 100%; padding: 12px;">
+                <p style="color:#FFA500"><strong>⚠️ Localização não disponível</strong></p>
+                <p style="font-size:13px;margin-top:8px;color:rgba(255,255,255,0.7)">${msgs[error.code] || 'Erro desconhecido'}</p>
+                <button onclick="getLocation()" class="btn btn-secondary" style="margin-top:12px;width:100%;padding:10px">
                     🔄 Tentar Novamente
                 </button>
-                <p style="font-size: 12px; margin-top: 12px; color: rgba(255,255,255,0.6);">
-                    ✓ Você pode continuar sem localização
-                </p>
+                <p style="font-size:12px;margin-top:10px;color:rgba(255,255,255,0.5)">✓ Você pode continuar sem localização</p>
             `;
-            
-            // Permite continuar mesmo sem localização
             currentLocation = null;
         },
-        options
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
     );
 }
 
-// Confirma registro
+// ==================== CONFIRMAR REGISTRO ====================
 async function confirmRegister() {
-    console.log('🎯 Iniciando confirmação de registro...');
-    console.log('Estado atual:', {
-        hasPhoto: !!currentPhoto,
-        hasUser: !!currentUser,
-        userId: currentUser?.id,
-        userName: currentUser?.name,
-        hasLocation: !!currentLocation
-    });
-    
     if (!currentPhoto) {
-        console.error('❌ Sem foto!');
-        showAlert('❌ Por favor, tire uma foto antes de confirmar!', 'error');
+        showAlert('❌ Tire uma foto antes de confirmar!', 'error');
         return;
     }
-    
-    if (!currentUser || !currentUser.id) {
-        console.error('❌ Usuário não identificado!');
-        showAlert('❌ Erro: usuário não identificado. Faça login novamente.', 'error');
-        setTimeout(() => {
-            window.location.href = 'login.html';
-        }, 2000);
+
+    if (!currentUser?.id) {
+        showAlert('❌ Sessão expirada. Faça login novamente.', 'error');
+        setTimeout(() => window.location.href = 'login.html', 2000);
         return;
     }
-    
+
     const type = document.getElementById('recordType').value;
     const btnConfirm = document.getElementById('btnConfirm');
-    
     btnConfirm.disabled = true;
     btnConfirm.textContent = '⏳ REGISTRANDO...';
-    
+
+    const now = new Date();
     const recordData = {
         user_id: currentUser.id,
         user_name: currentUser.name,
         user_email: currentUser.email,
-        type: type,
+        type,
         photo: currentPhoto,
         latitude: currentLocation?.latitude || null,
         longitude: currentLocation?.longitude || null,
-        address: currentLocation?.address || 'Localização não capturada'
+        address: currentLocation?.address || 'Localização não capturada',
+        // Salva data/hora local para uso no modo offline
+        _localDate: now.toLocaleDateString('pt-BR'),
+        _localTime: now.toLocaleTimeString('pt-BR'),
+        _localTimestamp: now.getTime()
     };
-    
-    console.log('📤 Enviando dados para o servidor...');
-    console.log('Dados do registro:', {
-        user_id: recordData.user_id,
-        user_name: recordData.user_name,
-        user_email: recordData.user_email,
-        type: recordData.type,
-        photo_size: recordData.photo ? Math.round(recordData.photo.length / 1024) + 'KB' : 'N/A',
-        has_location: !!recordData.latitude
-    });
-    
-    try {
-        if (!navigator.onLine) {
-            queueOfflineRecord(recordData);
-            showAlert('📴 Sem internet: registro salvo e será sincronizado automaticamente.', 'success');
-            closeRegisterModal();
-            loadMyRecords();
-            return;
-        }
 
+    if (!navigator.onLine) {
+        // Offline: salva diretamente na fila local
+        queueOfflineRecord(recordData);
+        showAlert('📴 Sem internet! Registro salvo localmente. Será enviado automaticamente ao reconectar.', 'success');
+        closeRegisterModal();
+        loadMyRecords();
+        updateOfflineBadge();
+        return;
+    }
+
+    try {
         await submitRecordToApi(recordData);
-        console.log('✓✓✓ PONTO REGISTRADO COM SUCESSO!');
         showAlert('✅ Ponto registrado com sucesso!', 'success');
         closeRegisterModal();
-        setTimeout(() => {
-            loadMyRecords();
-        }, 500);
+        setTimeout(loadMyRecords, 500);
     } catch (err) {
-        console.error('❌❌❌ ERRO COMPLETO:', err);
-
-        if (!navigator.onLine || err.message.includes('Failed to fetch')) {
-            queueOfflineRecord(recordData);
-            showAlert('📴 Sem conexão com servidor: registro salvo para sincronizar depois.', 'success');
-            closeRegisterModal();
-            loadMyRecords();
-            return;
-        }
-
-        showAlert('❌ Erro ao registrar: ' + err.message, 'error');
-        btnConfirm.disabled = false;
-        btnConfirm.textContent = '✓ CONFIRMAR REGISTRO';
+        // Falhou mesmo com navigator.onLine = true (pode ser instabilidade)
+        queueOfflineRecord(recordData);
+        showAlert('⚠️ Falha na conexão. Registro salvo localmente para sincronizar depois.', 'success');
+        closeRegisterModal();
+        loadMyRecords();
+        updateOfflineBadge();
     }
 }
 
-// Carrega registros do usuário
+// ==================== CARREGAR REGISTROS ====================
 async function loadMyRecords() {
     try {
         let records = [];
 
         if (navigator.onLine) {
-            const response = await fetch(`${API_URL}/records/user/${currentUser.id}`);
-            const data = await response.json();
-            records = data.records || [];
-            cacheUserRecords(currentUser.id, records);
+            try {
+                const response = await fetch(`${API_URL}/records/user/${currentUser.id}`);
+                const data = await response.json();
+                records = data.records || [];
+                cacheUserRecords(currentUser.id, records);
+            } catch {
+                records = getCachedUserRecords(currentUser.id);
+            }
         } else {
             records = getCachedUserRecords(currentUser.id);
         }
 
         const today = new Date().toLocaleDateString('pt-BR');
         const todayRecords = records.filter(r => r.date === today);
-        const offlinePending = getOfflineRecordsByUser(currentUser.id).filter(r => r.date === today);
 
-        const pendingRecords = offlinePending.map((record) => ({
-            ...record,
-            isOfflinePending: true,
-            time: record.time || new Date(record.timestamp || Date.now()).toLocaleTimeString('pt-BR')
-        }));
+        // Adiciona registros offline pendentes do dia atual
+        const offlinePending = getOfflineRecordsByUser(currentUser.id)
+            .filter(r => r.date === today)
+            .map(r => ({ ...r, isOfflinePending: true }));
 
-        renderRecords([...todayRecords, ...pendingRecords]);
+        renderRecords([...todayRecords, ...offlinePending]);
     } catch (err) {
         console.error('Erro ao carregar registros:', err);
         const fallback = getCachedUserRecords(currentUser.id);
@@ -510,69 +348,44 @@ async function loadMyRecords() {
     }
 }
 
-// Renderiza registros
 function renderRecords(records) {
     const recordsList = document.getElementById('recordsList');
-    
-    if (records.length === 0) {
+
+    if (!records.length) {
         recordsList.innerHTML = '<p class="empty-state">Nenhum registro hoje. Clique no botão acima para registrar!</p>';
         return;
     }
-    
+
     recordsList.innerHTML = records.map(record => `
-        <div class="record-item">
+        <div class="record-item" style="${record.isOfflinePending ? 'opacity:0.75;border-left-color:#FFA500' : ''}">
             <div class="record-info">
                 <span class="record-badge badge-${record.type.replace('_', '-')}">
                     ${getTypeLabel(record.type)}
                 </span>
-                <span class="record-date">${record.date}${record.isOfflinePending ? ' • pendente de sync' : ''}</span>
+                <span class="record-date">
+                    ${record.date}
+                    ${record.isOfflinePending ? ' <span style="color:#FFA500;font-size:12px">⏳ pendente</span>' : ''}
+                </span>
             </div>
             <span class="record-time">${record.time}</span>
         </div>
     `).join('');
 }
 
-// Retorna label do tipo
 function getTypeLabel(type) {
-    const labels = {
+    return {
         'entrada': '🟢 Entrada',
         'saida_almoco': '🟡 Saída Almoço',
         'retorno_almoco': '🔵 Retorno Almoço',
         'saida': '🔴 Saída'
-    };
-    return labels[type] || type;
+    }[type] || type;
 }
 
-
-async function submitRecordToApi(recordData) {
-    const response = await fetch(`${API_URL}/record`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(recordData)
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Servidor retornou erro ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    if (!data.success) {
-        throw new Error(data.error || 'Erro desconhecido ao registrar');
-    }
-
-    return data;
-}
+// ==================== FILA OFFLINE (localStorage) ====================
 
 function getOfflineQueue() {
-    try {
-        return JSON.parse(localStorage.getItem(OFFLINE_RECORDS_KEY) || '[]');
-    } catch {
-        return [];
-    }
+    try { return JSON.parse(localStorage.getItem(OFFLINE_RECORDS_KEY) || '[]'); }
+    catch { return []; }
 }
 
 function saveOfflineQueue(queue) {
@@ -581,37 +394,55 @@ function saveOfflineQueue(queue) {
 
 function queueOfflineRecord(recordData) {
     const queue = getOfflineQueue();
+    const now = new Date();
     queue.push({
         ...recordData,
         offlineId: `offline-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        date: new Date().toLocaleDateString('pt-BR'),
-        time: new Date().toLocaleTimeString('pt-BR'),
-        timestamp: Date.now()
+        date: recordData._localDate || now.toLocaleDateString('pt-BR'),
+        time: recordData._localTime || now.toLocaleTimeString('pt-BR'),
+        timestamp: recordData._localTimestamp || now.getTime()
     });
     saveOfflineQueue(queue);
 }
 
 function getOfflineRecordsByUser(userId) {
-    return getOfflineQueue().filter(record => Number(record.user_id) === Number(userId));
+    return getOfflineQueue().filter(r => Number(r.user_id) === Number(userId));
 }
 
-function getCachedRecordsMap() {
-    try {
-        return JSON.parse(localStorage.getItem(CACHED_RECORDS_KEY) || '{}');
-    } catch {
-        return {};
-    }
-}
+// ==================== CACHE DE REGISTROS ====================
 
 function cacheUserRecords(userId, records) {
-    const cached = getCachedRecordsMap();
-    cached[userId] = records;
-    localStorage.setItem(CACHED_RECORDS_KEY, JSON.stringify(cached));
+    try {
+        const cached = JSON.parse(localStorage.getItem(CACHED_RECORDS_KEY) || '{}');
+        cached[userId] = records;
+        localStorage.setItem(CACHED_RECORDS_KEY, JSON.stringify(cached));
+    } catch {}
 }
 
 function getCachedUserRecords(userId) {
-    const cached = getCachedRecordsMap();
-    return cached[userId] || [];
+    try {
+        const cached = JSON.parse(localStorage.getItem(CACHED_RECORDS_KEY) || '{}');
+        return cached[userId] || [];
+    } catch { return []; }
+}
+
+// ==================== SINCRONIZAÇÃO ====================
+
+async function submitRecordToApi(recordData) {
+    const response = await fetch(`${API_URL}/record`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(recordData)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Servidor retornou ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    if (!data.success) throw new Error(data.error || 'Erro ao registrar');
+    return data;
 }
 
 async function syncOfflineRecords() {
@@ -620,72 +451,112 @@ async function syncOfflineRecords() {
     const queue = getOfflineQueue();
     if (!queue.length) return;
 
+    console.log(`🔄 Sincronizando ${queue.length} registro(s) offline...`);
+
     const failed = [];
+    let synced = 0;
 
     for (const record of queue) {
         try {
             await submitRecordToApi(record);
-        } catch (error) {
+            synced++;
+        } catch {
             failed.push(record);
         }
     }
 
     saveOfflineQueue(failed);
 
-    if (failed.length === 0) {
-        showAlert('☁️ Registros offline sincronizados com sucesso!', 'success');
+    if (synced > 0) {
+        showAlert(`☁️ ${synced} registro(s) sincronizado(s) com sucesso!`, 'success');
         loadMyRecords();
+        updateOfflineBadge();
     }
 }
 
-function handleConnectivityChange(isInitial = false) {
-    if (navigator.onLine) {
-        if (!isInitial) {
-            showAlert('🌐 Conexão restabelecida. Sincronizando registros...', 'success');
+// ==================== BADGE OFFLINE ====================
+
+function updateOfflineBadge() {
+    const pending = getOfflineRecordsByUser(currentUser?.id || 0);
+    let badge = document.getElementById('offlineBadge');
+
+    if (pending.length > 0) {
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'offlineBadge';
+            badge.style.cssText = `
+                position: fixed; bottom: 170px; right: 30px;
+                background: #FFA500; color: #000;
+                padding: 10px 18px; border-radius: 20px;
+                font-weight: 800; font-size: 14px;
+                box-shadow: 0 5px 20px rgba(255,165,0,0.5);
+                z-index: 998; cursor: pointer;
+            `;
+            badge.onclick = syncOfflineRecords;
+            document.body.appendChild(badge);
         }
-        syncOfflineRecords();
-    } else if (!isInitial) {
-        showAlert('📴 Você está offline. Novos registros serão salvos localmente.', 'error');
+        badge.textContent = `⏳ ${pending.length} pendente(s) — toque para sincronizar`;
+    } else if (badge) {
+        badge.remove();
     }
 }
 
-// Alerta visual
+// ==================== CONECTIVIDADE ====================
+
+function handleConnectivityChange(status) {
+    if (status === 'online') {
+        showAlert('🌐 Conexão restabelecida! Sincronizando...', 'success');
+        syncOfflineRecords();
+    } else if (status === 'offline') {
+        showAlert('📴 Você está offline. Registros serão salvos localmente.', 'error');
+        updateOfflineBadge();
+    }
+}
+
+// ==================== SCROLL ====================
+
+function handleScrollButtons() {
+    const scrollToTop = document.getElementById('scrollToTop');
+    const scrollToBottom = document.getElementById('scrollToBottom');
+    if (!scrollToTop || !scrollToBottom) return;
+
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const windowHeight = window.innerHeight;
+    const documentHeight = document.documentElement.scrollHeight;
+
+    scrollToTop.classList.toggle('visible', scrollTop > 300);
+    scrollToBottom.style.display = scrollTop + windowHeight >= documentHeight - 100 ? 'none' : 'flex';
+}
+
+function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+function scrollToBottom() { window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' }); }
+
+// ==================== ALERTAS ====================
+
 function showAlert(message, type = 'success') {
     const alert = document.createElement('div');
     alert.style.cssText = `
-        position: fixed;
-        top: 30px;
-        right: 30px;
+        position: fixed; top: 30px; right: 30px;
         background: ${type === 'success' ? '#10b981' : '#ef4444'};
-        color: white;
-        padding: 20px 30px;
+        color: white; padding: 20px 30px;
         border-radius: 12px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-        z-index: 10000;
-        font-weight: 700;
+        z-index: 10000; font-weight: 700;
         animation: slideIn 0.3s ease;
-        max-width: 400px;
+        max-width: 400px; line-height: 1.5;
     `;
     alert.textContent = message;
-    
     document.body.appendChild(alert);
-    
+
     setTimeout(() => {
         alert.style.animation = 'slideOut 0.3s ease';
         setTimeout(() => alert.remove(), 300);
-    }, 3000);
+    }, 4000);
 }
 
-// Animações CSS
 const style = document.createElement('style');
 style.textContent = `
-    @keyframes slideIn {
-        from { transform: translateX(400px); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-    }
-    @keyframes slideOut {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(400px); opacity: 0; }
-    }
+    @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(400px); opacity: 0; } }
 `;
 document.head.appendChild(style);

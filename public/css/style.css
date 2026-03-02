@@ -401,10 +401,10 @@ body {
 .header-logo {
     width: 180px;
     height: 180px;
-    padding: 16px;
-    background: radial-gradient(circle, rgba(255, 215, 0, 0.16) 0%, rgba(0, 0, 0, 0.4) 100%);
-    border: 1px solid rgba(255, 215, 0, 0.2);
-    border-radius: 20px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
     object-fit: contain;
     filter: drop-shadow(0 5px 15px rgba(255, 215, 0, 0.3));
 }
