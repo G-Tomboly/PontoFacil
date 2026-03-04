@@ -181,6 +181,57 @@ const database = {
         );
     },
 
+
+    // Lista todos os usuários (sem senha)
+    getAllUsers: (callback) => {
+        db.all(
+            'SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC',
+            [],
+            callback
+        );
+    },
+
+    // Remove usuário e seus registros
+    deleteUserAndRecords: (userId, callback) => {
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+            db.run('DELETE FROM records WHERE user_id = ?', [userId], (recordsErr) => {
+                if (recordsErr) {
+                    db.run('ROLLBACK');
+                    callback(recordsErr);
+                    return;
+                }
+
+                db.run('DELETE FROM users WHERE id = ?', [userId], function(userErr) {
+                    if (userErr) {
+                        db.run('ROLLBACK');
+                        callback(userErr);
+                        return;
+                    }
+
+                    db.run('COMMIT', (commitErr) => {
+                        if (commitErr) {
+                            db.run('ROLLBACK');
+                            callback(commitErr);
+                            return;
+                        }
+                        callback(null, { deletedUsers: this.changes });
+                    });
+                });
+            });
+        });
+    },
+
+    // Limpa todos os registros
+    clearAllRecords: (callback) => {
+        db.run('DELETE FROM records', function(err) {
+            if (err) {
+                callback(err);
+                return;
+            }
+            callback(null, { deletedRecords: this.changes });
+        });
+    },
     // Estatísticas
     getStats: (callback) => {
         db.all('SELECT * FROM records ORDER BY timestamp DESC', [], (err, records) => {
