@@ -31,6 +31,32 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // ==========================================
+// HELPERS DE AUTORIZAÇÃO
+// ==========================================
+
+
+function requireAdminById(adminId, res, onSuccess) {
+    if (!adminId) {
+        res.status(401).json({ error: 'Admin não informado' });
+        return;
+    }
+
+    database.getUserById(adminId, (err, user) => {
+        if (err) {
+            res.status(500).json({ error: 'Erro ao validar administrador' });
+            return;
+        }
+
+        if (!user || user.role !== 'admin') {
+            res.status(403).json({ error: 'Acesso negado. Apenas admin.' });
+            return;
+        }
+
+        onSuccess(user);
+    });
+}
+
+// ==========================================
 // ROTAS DE AUTENTICAÇÃO
 // ==========================================
 
@@ -139,6 +165,13 @@ app.get('/api/records', (req, res) => {
     });
 });
 
+app.get('/api/records/user/:id', (req, res) => {
+    database.getRecordsByUserId(req.params.id, (err, records) => {
+        if (err) return res.status(500).json({ error: 'Erro ao buscar registros do usuário' });
+        res.json({ records });
+    });
+});
+
 app.get('/api/stats', (req, res) => {
     database.getStats((err, stats) => {
         if (err) return res.status(500).json({ error: 'Erro ao buscar estatísticas' });
@@ -151,6 +184,52 @@ app.get('/api/stats', (req, res) => {
         });
     });
 });
+
+
+app.get('/api/users', (req, res) => {
+    const adminId = req.query.admin_id;
+
+    requireAdminById(adminId, res, () => {
+        database.getAllUsers((err, users) => {
+            if (err) return res.status(500).json({ error: 'Erro ao buscar usuários' });
+            res.json({ users });
+        });
+    });
+});
+
+app.delete('/api/users/:id', (req, res) => {
+    const { admin_id } = req.body;
+    const targetUserId = Number(req.params.id);
+
+    requireAdminById(admin_id, res, (adminUser) => {
+        if (Number(adminUser.id) === targetUserId) {
+            return res.status(400).json({ error: 'Você não pode excluir sua própria conta de admin' });
+        }
+
+        database.getUserById(targetUserId, (err, targetUser) => {
+            if (err) return res.status(500).json({ error: 'Erro ao buscar usuário alvo' });
+            if (!targetUser) return res.status(404).json({ error: 'Usuário não encontrado' });
+            if (targetUser.role === 'admin') return res.status(400).json({ error: 'Não é permitido excluir outro admin' });
+
+            database.deleteUserAndRecords(targetUserId, (deleteErr, result) => {
+                if (deleteErr) return res.status(500).json({ error: 'Erro ao excluir usuário' });
+                res.json({ success: true, deleted: result });
+            });
+        });
+    });
+});
+
+app.delete('/api/records', (req, res) => {
+    const { admin_id } = req.body;
+
+    requireAdminById(admin_id, res, () => {
+        database.clearAllRecords((err, result) => {
+            if (err) return res.status(500).json({ error: 'Erro ao limpar registros' });
+            res.json({ success: true, deleted: result.deletedRecords });
+        });
+    });
+});
+
 
 // ==========================================
 // REDIRECIONAMENTO E INICIALIZAÇÃO
