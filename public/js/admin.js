@@ -476,8 +476,17 @@ function showRecordDetails(recordId) {
   const r = App.records.find(rec => rec.id === recordId);
   if (!r) return;
 
-  // URL relativa (sem hardcoded localhost!)
-  const photoUrl = r.photo ? `/uploads/${r.photo}` : null;
+  // Suporta: filename salvo no disco, base64 inline, ou null
+  let photoUrl = null;
+  if (r.photo) {
+    if (r.photo.startsWith('data:image')) {
+      // Base64 direto (registros antigos ou modo offline)
+      photoUrl = r.photo;
+    } else {
+      // Nome de arquivo salvo em /uploads/
+      photoUrl = `/uploads/${r.photo}`;
+    }
+  }
 
   const el = document.getElementById('recordDetails');
   el.innerHTML = `
