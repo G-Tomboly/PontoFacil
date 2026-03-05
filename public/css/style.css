@@ -166,20 +166,16 @@ body {
   margin-bottom: 48px;
 }
 
-.brand-logo {
-  width: 130px;
-  height: 130px;
-  display: block;
-  margin: 0 auto 24px;
-  /* ZERO bordas, ZERO fundo */
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  padding: 0 !important;
-  outline: none !important;
-  box-shadow: none !important;
-  object-fit: contain;
-  filter: drop-shadow(0 0 24px rgba(255,215,0,0.6));
+/* ===== LOGO — SEM FUNDO, SEM BORDA ===== */
+.brand-logo,
+.header-logo,
+img[src*="logo"] {
+  background:    transparent !important;
+  border:        none        !important;
+  border-radius: 0           !important;
+  padding:       0           !important;
+  box-shadow:    none        !important;
+  outline:       none        !important;
   animation: float 5s ease-in-out infinite;
 }
 
