@@ -1,1015 +1,1076 @@
-const API_URL = '/api';
+/* ==================================================
+   admin.js — WD Manutenções (Painel Administrativo)
+   ================================================== */
 
-// ==================== FERIADOS NACIONAIS ====================
-const FERIADOS = [
-    '2025-01-01', '2025-02-24', '2025-02-25', '2025-04-18', '2025-04-21',
-    '2025-05-01', '2025-06-19', '2025-09-07', '2025-10-12', '2025-11-02',
-    '2025-11-15', '2025-11-20', '2025-12-25',
-    '2026-01-01', '2026-02-16', '2026-02-17', '2026-04-03', '2026-04-21',
-    '2026-05-01', '2026-06-04', '2026-09-07', '2026-10-12', '2026-11-02',
-    '2026-11-15', '2026-11-20', '2026-12-25'
-];
+const API_URL   = '/api';
+const SESSION_KEY = 'wd_user';
 
-// ==================== ESTADO GLOBAL ====================
-const AppState = {
-    currentAdmin: null,
-    allRecords: [],
-    allEmployees: [],
-    currentTab: 'dashboard'
+/* ===== FERIADOS NACIONAIS (facilmente extensível) ===== */
+const FERIADOS = new Set([
+  '2025-01-01','2025-02-24','2025-02-25','2025-04-18','2025-04-21',
+  '2025-05-01','2025-06-19','2025-09-07','2025-10-12','2025-11-02',
+  '2025-11-15','2025-11-20','2025-12-25',
+  '2026-01-01','2026-02-16','2026-02-17','2026-04-03','2026-04-21',
+  '2026-05-01','2026-06-04','2026-09-07','2026-10-12','2026-11-02',
+  '2026-11-15','2026-11-20','2026-12-25',
+  '2027-01-01','2027-02-15','2027-02-16','2027-03-26','2027-04-21',
+  '2027-05-01','2027-05-27','2027-09-07','2027-10-12','2027-11-02',
+  '2027-11-15','2027-11-20','2027-12-25'
+]);
+
+/* ===== ESTADO GLOBAL ===== */
+const App = {
+  admin:       null,
+  records:     [],
+  employees:   [],
+  currentTab:  'dashboard'
 };
 
-function getAdminId() {
-    return AppState.currentAdmin?.id || null;
+/* ==================================================
+   HELPERS
+   ================================================== */
+function esc(str) {
+  if (str == null) return '';
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])
+  );
 }
 
-// ==================== FUNÇÕES DE DATA ====================
-function isFeriado(dateStr) {
-    return FERIADOS.includes(dateStr);
+function adminId() { return App.admin?.id ?? null; }
+
+function isFeriado(isoDate)  { return FERIADOS.has(isoDate); }
+function getDow(brDate)      { // "DD/MM/YYYY" → 0-6
+  const [d,m,y] = brDate.split('/');
+  return new Date(+y, +m-1, +d).getDay();
+}
+function brToIso(brDate) {   // "DD/MM/YYYY" → "YYYY-MM-DD"
+  const [d,m,y] = brDate.split('/');
+  return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
 }
 
-function getDayOfWeek(dateStr) {
-    const [day, month, year] = dateStr.split('/');
-    return new Date(year, month - 1, day).getDay();
+function calcMinutes(t1, t2) {
+  if (!t1 || !t2) return 0;
+  const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+  return Math.max(0, toMin(t2) - toMin(t1));
 }
 
-function formatDateForComparison(dateStr) {
-    const [day, month, year] = dateStr.split('/');
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+function fmtMin(min) {
+  const h = Math.floor(min/60), m = min%60;
+  return `${h}h${String(m).padStart(2,'0')}`;
 }
 
-function calcMinutes(timeStart, timeEnd) {
-    if (!timeStart || !timeEnd) return 0;
-    const [h1, m1] = timeStart.split(':').map(Number);
-    const [h2, m2] = timeEnd.split(':').map(Number);
-    return Math.max(0, (h2 * 60 + m2) - (h1 * 60 + m1));
+function fmtDec(min) { return (min/60).toFixed(2); }
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
-function formatMinutes(minutes) {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h${mins.toString().padStart(2, '0')}`;
+/* ==================================================
+   TOAST
+   ================================================== */
+function showToast(msg, type = 'success') {
+  document.querySelectorAll('.wd-toast').forEach(t => t.remove());
+  const colors = { success:'#00e676', error:'#ff4444', warning:'#ff9100', info:'#448aff' };
+  const el = document.createElement('div');
+  el.className  = 'wd-toast';
+  el.textContent = msg;
+  el.style.cssText = `
+    position:fixed;top:24px;right:24px;
+    background:${colors[type]||colors.info};
+    color:#000;padding:16px 24px;border-radius:12px;
+    box-shadow:0 10px 40px rgba(0,0,0,0.4);z-index:10000;
+    font-weight:700;font-family:'Barlow',sans-serif;
+    font-size:14px;max-width:400px;line-height:1.5;
+    animation:slideInRight 0.35s ease both;
+  `;
+  document.body.appendChild(el);
+  setTimeout(() => {
+    el.style.animation = 'slideOutRight 0.3s ease forwards';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
 }
 
-function minutesToDecimal(minutes) {
-    return (minutes / 60).toFixed(2);
-}
+(() => {
+  const s = document.createElement('style');
+  s.textContent = `
+    @keyframes slideInRight  {from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}
+    @keyframes slideOutRight {from{transform:translateX(0);opacity:1}to{transform:translateX(400px);opacity:0}}
+  `;
+  document.head.appendChild(s);
+})();
 
-// ==================== CLASSE DE HORAS ====================
-class HorasCalculadas {
-    constructor() {
-        this.diasUteis = 0;
-        this.sabados = 0;
-        this.domingoseFeriados = 0;
-    }
-    
-    getTotalComAdicionais() {
-        const normalDecimal = this.diasUteis / 60;
-        const sabadosDecimal = (this.sabados / 60) * 1.5;
-        const domingosFeriadosDecimal = (this.domingoseFeriados / 60) * 2.0;
-        return Math.round((normalDecimal + sabadosDecimal + domingosFeriadosDecimal) * 60);
-    }
-    
-    getResumo() {
-        return {
-            diasUteis: {
-                horas: formatMinutes(this.diasUteis),
-                decimal: minutesToDecimal(this.diasUteis)
-            },
-            sabados: {
-                horas: formatMinutes(this.sabados),
-                decimal: minutesToDecimal(this.sabados),
-                adicional: minutesToDecimal(this.sabados * 0.5),
-                total: minutesToDecimal(this.sabados * 1.5)
-            },
-            domingosFeriados: {
-                horas: formatMinutes(this.domingoseFeriados),
-                decimal: minutesToDecimal(this.domingoseFeriados),
-                adicional: minutesToDecimal(this.domingoseFeriados * 1.0),
-                total: minutesToDecimal(this.domingoseFeriados * 2.0)
-            },
-            totalGeral: {
-                horas: formatMinutes(this.getTotalComAdicionais()),
-                decimal: minutesToDecimal(this.getTotalComAdicionais())
-            }
-        };
-    }
-}
-
-// ==================== INICIALIZAÇÃO ====================
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('🔧 Sistema Admin iniciando...');
-    document.body.style.overflow = 'auto';
-    checkAdminAuth();
-    setupEventListeners();
-    window.addEventListener('scroll', handleScrollButtons);
-    handleScrollButtons();
+/* ==================================================
+   INICIALIZAÇÃO
+   ================================================== */
+document.addEventListener('DOMContentLoaded', () => {
+  checkAdminAuth();
+  setupTabListeners();
+  setupSearchListener();
+  window.addEventListener('scroll', updateScrollButtons);
+  updateScrollButtons();
 });
 
+/* ==================================================
+   AUTENTICAÇÃO
+   ================================================== */
 function checkAdminAuth() {
-    const userStr = sessionStorage.getItem('user') || localStorage.getItem('user');
-    if (userStr) {
-        const user = JSON.parse(userStr);
-        if (user.role === 'admin') {
-            AppState.currentAdmin = user;
-            sessionStorage.setItem('user', userStr);
-            showAdminPanel();
-            return;
-        }
+  const str = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+  if (str) {
+    const user = JSON.parse(str);
+    if (user.role === 'admin') {
+      App.admin = user;
+      sessionStorage.setItem(SESSION_KEY, str);
+      showAdminPanel();
+      return;
     }
-    showLoginScreen();
+  }
+  showLoginScreen();
 }
 
 function showLoginScreen() {
-    document.getElementById('adminLoginScreen').classList.remove('hidden');
-    document.getElementById('adminPanel').classList.add('hidden');
-    const passwordInput = document.getElementById('adminPassword');
-    if (passwordInput) {
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') adminLogin();
-        });
-    }
+  document.getElementById('adminLoginScreen').classList.remove('hidden');
+  document.getElementById('adminPanel').classList.add('hidden');
+  document.getElementById('adminPassword')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') adminLogin();
+  });
 }
 
 async function adminLogin() {
-    const email = document.getElementById('adminEmail').value.trim();
-    const password = document.getElementById('adminPassword').value;
-    
-    if (!email || !password) {
-        showAlert('Preencha email e senha!', 'error');
-        return;
+  const email    = document.getElementById('adminEmail').value.trim();
+  const password = document.getElementById('adminPassword').value;
+  if (!email || !password) { showToast('Preencha email e senha!', 'error'); return; }
+
+  try {
+    const res  = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+
+    if (data.success && data.user.role === 'admin') {
+      App.admin = data.user;
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
+      localStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
+      showAdminPanel();
+      showToast('Acesso autorizado!', 'success');
+    } else {
+      showToast(data.error || 'Credenciais inválidas!', 'error');
     }
-    
-    try {
-        const response = await fetch(`${API_URL}/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success && data.user.role === 'admin') {
-            AppState.currentAdmin = data.user;
-            sessionStorage.setItem('user', JSON.stringify(data.user));
-            localStorage.setItem('user', JSON.stringify(data.user));
-            showAdminPanel();
-            showAlert('Login realizado!', 'success');
-        } else {
-            showAlert('Credenciais inválidas!', 'error');
-        }
-    } catch (err) {
-        showAlert('Erro: ' + err.message, 'error');
-    }
+  } catch (err) {
+    showToast('Erro de conexão: ' + err.message, 'error');
+  }
 }
 
 function showAdminPanel() {
-    document.getElementById('adminName').textContent = AppState.currentAdmin.name;
-    document.getElementById('adminLoginScreen').classList.add('hidden');
-    document.getElementById('adminPanel').classList.remove('hidden');
-    setTimeout(() => loadDashboard(), 100);
+  // XSS-safe
+  document.getElementById('adminName').textContent = App.admin.name;
+  document.getElementById('adminLoginScreen').classList.add('hidden');
+  document.getElementById('adminPanel').classList.remove('hidden');
+  setTimeout(loadDashboard, 100);
 }
 
 function adminLogout() {
-    if (!confirm('Deseja sair?')) return;
-    AppState.currentAdmin = null;
-    AppState.allRecords = [];
-    AppState.allEmployees = [];
-    sessionStorage.removeItem('user');
-    localStorage.removeItem('user');
-    document.getElementById('adminEmail').value = '';
-    document.getElementById('adminPassword').value = '';
-    showLoginScreen();
+  if (!confirm('Deseja sair do painel admin?')) return;
+  App.admin     = null;
+  App.records   = [];
+  App.employees = [];
+  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
+  document.getElementById('adminEmail').value    = '';
+  document.getElementById('adminPassword').value = '';
+  showLoginScreen();
 }
 
-// ==================== EVENT LISTENERS ====================
-function setupEventListeners() {
-    const tabsContainer = document.querySelector('.admin-tabs');
-    if (tabsContainer) {
-        tabsContainer.addEventListener('click', (e) => {
-            const button = e.target.closest('.admin-tab');
-            if (button) {
-                const tabName = button.getAttribute('data-tab');
-                if (tabName) switchTab(tabName);
-            }
-        });
-    }
-    
-    const searchInput = document.getElementById('searchEmployee');
-    if (searchInput) {
-        searchInput.addEventListener('input', debounce(filterEmployees, 300));
-    }
+/* ==================================================
+   ABAS
+   ================================================== */
+function setupTabListeners() {
+  document.querySelector('.admin-tabs')?.addEventListener('click', e => {
+    const btn = e.target.closest('.admin-tab');
+    if (!btn) return;
+    const tab = btn.getAttribute('data-tab');
+    if (tab) switchTab(tab);
+  });
 }
 
-function switchTab(tabName) {
-    AppState.currentTab = tabName;
-    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-    document.querySelector(`.admin-tab[data-tab="${tabName}"]`)?.classList.add('active');
-    document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-    const tabId = 'tab' + tabName.charAt(0).toUpperCase() + tabName.slice(1);
-    document.getElementById(tabId)?.classList.add('active');
-    loadTabData(tabName);
+function switchTab(name) {
+  App.currentTab = name;
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.admin-tab[data-tab="${name}"]`)?.classList.add('active');
+  document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1))?.classList.add('active');
+
+  switch (name) {
+    case 'dashboard': loadDashboard(); break;
+    case 'employees': loadEmployees(); break;
+    case 'records':   loadAllRecords(); break;
+  }
 }
 
-function loadTabData(tabName) {
-    switch(tabName) {
-        case 'dashboard': loadDashboard(); break;
-        case 'employees': loadEmployees(); break;
-        case 'records': loadAllRecords(); break;
-    }
-}
-
-// ==================== DASHBOARD ====================
+/* ==================================================
+   DASHBOARD
+   ================================================== */
 async function loadDashboard() {
-    try {
-        const [statsRes, recordsRes] = await Promise.all([
-            fetch(`${API_URL}/stats`),
-            fetch(`${API_URL}/records`)
-        ]);
-        
-        const stats = await statsRes.json();
-        const records = await recordsRes.json();
-        
-        AppState.allRecords = records.records;
-        
-        document.getElementById('statTotalEmployees').textContent = stats.total_employees;
-        document.getElementById('statTodayRecords').textContent = stats.today_records;
-        document.getElementById('statTotalRecords').textContent = stats.total_records;
-        
-        const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-        document.getElementById('statAvgRecordsPerDay').textContent = Math.round(stats.total_records / daysInMonth) || 0;
-        
-        const userSelect = document.getElementById('filterUser');
-        if (userSelect) {
-            userSelect.innerHTML = '<option value="">Todos</option>' + 
-                stats.users.map(u => `<option value="${u}">${u}</option>`).join('');
-        }
-        
-        loadRecentActivity(records.records);
-    } catch (err) {
-        showAlert('Erro ao carregar dashboard', 'error');
+  try {
+    const [statsRes, recRes] = await Promise.all([
+      fetch(`${API_URL}/stats`),
+      fetch(`${API_URL}/records`)
+    ]);
+    const stats   = await statsRes.json();
+    const recData = await recRes.json();
+    App.records   = recData.records || [];
+
+    document.getElementById('statTotalEmployees').textContent = stats.total_employees || 0;
+    document.getElementById('statTodayRecords').textContent   = stats.today_records   || 0;
+    document.getElementById('statTotalRecords').textContent   = stats.total_records   || 0;
+
+    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
+    document.getElementById('statAvgRecordsPerDay').textContent =
+      Math.round((stats.total_records || 0) / daysInMonth) || 0;
+
+    // Popula filtro de usuários
+    const sel = document.getElementById('filterUser');
+    if (sel) {
+      const users = [...new Set(App.records.map(r => r.user_name))].sort();
+      sel.innerHTML = '<option value="">Todos os Colaboradores</option>' +
+        users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
     }
+
+    renderRecentActivity(App.records.slice(0, 10));
+  } catch (err) {
+    showToast('Erro ao carregar dashboard: ' + err.message, 'error');
+  }
 }
 
-function loadRecentActivity(records) {
-    const list = document.getElementById('recentActivity');
-    if (!list) return;
-    
-    const recent = records.slice(0, 10);
-    list.innerHTML = recent.length ? recent.map(r => `
-        <div class="activity-item" onclick="showRecordDetails(${r.id})" style="cursor:pointer">
-            <div class="activity-icon">${getTypeEmoji(r.type)}</div>
-            <div class="activity-content">
-                <strong>${r.user_name}</strong>
-                <small>${getTypeLabel(r.type)} - ${r.date}</small>
-            </div>
-            <div class="activity-time">${r.time}</div>
-        </div>
-    `).join('') : '<p class="empty-state">Nenhuma atividade</p>';
+function renderRecentActivity(records) {
+  const el = document.getElementById('recentActivity');
+  if (!el) return;
+  if (!records.length) { el.innerHTML = '<p class="empty-state">Nenhuma atividade</p>'; return; }
+
+  el.innerHTML = '';
+  records.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'activity-item';
+    item.onclick = () => showRecordDetails(r.id);
+    item.innerHTML = `
+      <div class="activity-icon">${getTypeEmoji(r.type)}</div>
+      <div class="activity-content">
+        <strong>${esc(r.user_name)}</strong>
+        <small>${getTypeLabel(r.type)} — ${esc(r.date)}</small>
+      </div>
+      <div class="activity-time">${esc(r.time.slice(0,8))}</div>
+    `;
+    el.appendChild(item);
+  });
 }
 
-// ==================== COLABORADORES ====================
+/* ==================================================
+   COLABORADORES
+   ================================================== */
 async function loadEmployees() {
-    try {
-        const [recordsRes, usersRes] = await Promise.all([
-            fetch(`${API_URL}/records`),
-            fetch(`${API_URL}/users?admin_id=${getAdminId()}`)
-        ]);
+  try {
+    const [recRes, usrRes] = await Promise.all([
+      fetch(`${API_URL}/records`),
+      fetch(`${API_URL}/users?admin_id=${adminId()}`)
+    ]);
 
-        const recordsData = await recordsRes.json();
-        const usersData = await usersRes.json();
+    if (!recRes.ok || !usrRes.ok) throw new Error('Erro na requisição');
 
-        if (!recordsRes.ok) throw new Error(recordsData.error || 'Erro ao carregar registros');
-        if (!usersRes.ok) throw new Error(usersData.error || 'Erro ao carregar contas');
+    App.records   = (await recRes.json()).records || [];
+    const usrData = await usrRes.json();
+    const empList = (usrData.users || []).filter(u => u.role === 'employee');
 
-        AppState.allRecords = recordsData.records || [];
+    App.employees = empList.map(u => {
+      const recs   = App.records.filter(r => Number(r.user_id) === Number(u.id));
+      const last   = recs.length
+        ? recs.reduce((a,b) => b.timestamp > a.timestamp ? b : a, recs[0])
+        : null;
+      return { id:u.id, name:u.name, email:u.email, totalRecords:recs.length, last };
+    });
 
-        const employeeUsers = (usersData.users || []).filter((user) => user.role === 'employee');
-        AppState.allEmployees = employeeUsers.map((user) => {
-            const userRecords = AppState.allRecords.filter((r) => Number(r.user_id) === Number(user.id));
-            const lastRecord = userRecords.length
-                ? userRecords.reduce((latest, current) => (current.timestamp > latest.timestamp ? current : latest), userRecords[0])
-                : null;
-
-            return {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                totalRecords: userRecords.length,
-                lastRecord
-            };
-        });
-
-        renderEmployees(AppState.allEmployees);
-    } catch (err) {
-        showAlert('Erro ao carregar colaboradores: ' + err.message, 'error');
-    }
+    renderEmployees(App.employees);
+  } catch (err) {
+    showToast('Erro ao carregar colaboradores: ' + err.message, 'error');
+  }
 }
 
-function renderEmployees(employees) {
-    const list = document.getElementById('employeesList');
-    if (!list) return;
-    
-    if (!employees.length) {
-        list.innerHTML = '<p class="empty-state">Nenhum colaborador</p>';
-        return;
-    }
-    
-    const today = new Date().toLocaleDateString('pt-BR');
-    list.innerHTML = employees.map(emp => {
-        const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
-        const todayCount = AppState.allRecords.filter(r => r.user_email === emp.email && r.date === today).length;
-        
-        return `
-            <div class="employee-card" onclick='showEmployeeDetails(${emp.id})'>
-                <div class="employee-header">
-                    <div class="employee-avatar">${initials}</div>
-                    <div class="employee-info">
-                        <h3>${emp.name}</h3>
-                        <p>${emp.email}</p>
-                    </div>
-                </div>
-                <div class="employee-stats">
-                    <div class="employee-stat">
-                        <span class="employee-stat-value">${emp.totalRecords}</span>
-                        <span class="employee-stat-label">Total</span>
-                    </div>
-                    <div class="employee-stat">
-                        <span class="employee-stat-value">${todayCount}</span>
-                        <span class="employee-stat-label">Hoje</span>
-                    </div>
-                </div>
-                <div style="margin-top:12px;">
-                    <button class="btn btn-secondary" style="background:#dc2626;color:#fff;width:100%;" onclick='deleteEmployeeAccount(event, ${emp.id}, ${JSON.stringify(emp.name)})'>Excluir Conta</button>
-                </div>
-            </div>
-        `;
-    }).join('');
+function setupSearchListener() {
+  document.getElementById('searchEmployee')?.addEventListener(
+    'input', debounce(filterEmployees, 250)
+  );
 }
 
 function filterEmployees() {
-    const search = document.getElementById('searchEmployee')?.value.toLowerCase() || '';
-    const filtered = AppState.allEmployees.filter(e => 
-        e.name.toLowerCase().includes(search) || e.email.toLowerCase().includes(search)
-    );
-    renderEmployees(filtered);
+  const q = document.getElementById('searchEmployee')?.value.toLowerCase() || '';
+  renderEmployees(App.employees.filter(e =>
+    e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q)
+  ));
+}
+
+function renderEmployees(list) {
+  const el = document.getElementById('employeesList');
+  if (!el) return;
+  if (!list.length) { el.innerHTML = '<p class="empty-state">Nenhum colaborador encontrado</p>'; return; }
+
+  const today = new Date().toLocaleDateString('pt-BR');
+  el.innerHTML = '';
+
+  list.forEach(emp => {
+    const initials  = emp.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+    const todayCnt  = App.records.filter(r => r.user_email === emp.email && r.date === today).length;
+
+    const card = document.createElement('div');
+    card.className = 'employee-card';
+    card.onclick = e => {
+      // Previne que o clique no botão excluir abra o modal
+      if (e.target.closest('.btn-danger')) return;
+      showEmployeeDetails(emp.id);
+    };
+    card.innerHTML = `
+      <div class="employee-header">
+        <div class="employee-avatar">${esc(initials)}</div>
+        <div class="employee-info">
+          <h3>${esc(emp.name)}</h3>
+          <p>${esc(emp.email)}</p>
+        </div>
+      </div>
+      <div class="employee-stats">
+        <div class="employee-stat">
+          <span class="employee-stat-value">${emp.totalRecords}</span>
+          <span class="employee-stat-label">Total</span>
+        </div>
+        <div class="employee-stat">
+          <span class="employee-stat-value">${todayCnt}</span>
+          <span class="employee-stat-label">Hoje</span>
+        </div>
+      </div>
+      <button class="btn btn-danger" style="width:100%;margin-top:12px"
+        onclick="deleteEmployee(event,${emp.id},'${esc(emp.name)}')">
+        🗑️ Excluir Conta
+      </button>
+    `;
+    el.appendChild(card);
+  });
 }
 
 function showEmployeeDetails(userId) {
-    const emp = AppState.allEmployees.find(e => Number(e.id) === Number(userId));
-    if (!emp) return;
-    
-    const empRecords = AppState.allRecords.filter(r => Number(r.user_id) === Number(emp.id));
-    const today = new Date().toLocaleDateString('pt-BR');
-    const todayRecords = empRecords.filter(r => r.date === today);
-    const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
-    
-    document.getElementById('employeeDetails').innerHTML = `
-        <div class="employee-details-header">
-            <div class="employee-details-avatar">${initials}</div>
-            <div class="employee-details-info">
-                <h3>${emp.name}</h3>
-                <p>📧 ${emp.email}</p>
-                <p>📅 Último: ${emp.lastRecord ? emp.lastRecord.date + ' ' + emp.lastRecord.time : 'Nenhum'}</p>
-            </div>
+  const emp = App.employees.find(e => Number(e.id) === Number(userId));
+  if (!emp) return;
+
+  const recs    = App.records.filter(r => Number(r.user_id) === Number(emp.id));
+  const today   = new Date().toLocaleDateString('pt-BR');
+  const todayRecs = recs.filter(r => r.date === today);
+  const initials = emp.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+
+  const el = document.getElementById('employeeDetails');
+  el.innerHTML = `
+    <div class="employee-details-header">
+      <div class="employee-details-avatar">${esc(initials)}</div>
+      <div class="employee-details-info">
+        <h3>${esc(emp.name)}</h3>
+        <p>📧 ${esc(emp.email)}</p>
+        <p>🕐 Último: ${emp.last ? esc(emp.last.date) + ' ' + esc(emp.last.time.slice(0,5)) : 'Nenhum'}</p>
+      </div>
+    </div>
+    <div class="employee-details-stats">
+      <div class="employee-detail-stat">
+        <span class="employee-detail-stat-value">${recs.length}</span>
+        <span class="employee-detail-stat-label">Total</span>
+      </div>
+      <div class="employee-detail-stat">
+        <span class="employee-detail-stat-value">${todayRecs.length}</span>
+        <span class="employee-detail-stat-label">Hoje</span>
+      </div>
+      <div class="employee-detail-stat">
+        <span class="employee-detail-stat-value">${recs.filter(r=>r.type==='entrada').length}</span>
+        <span class="employee-detail-stat-label">Entradas</span>
+      </div>
+      <div class="employee-detail-stat">
+        <span class="employee-detail-stat-value">${recs.filter(r=>r.type==='saida').length}</span>
+        <span class="employee-detail-stat-label">Saídas</span>
+      </div>
+    </div>
+    <h3 style="margin:20px 0 12px;font-size:18px;font-family:var(--font-display);letter-spacing:2px">
+      ÚLTIMOS REGISTROS
+    </h3>
+    <div class="admin-records-list" id="empRecordsList"></div>
+  `;
+
+  const recListEl = el.querySelector('#empRecordsList');
+  recs.slice(0,15).forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'admin-record-item';
+    item.onclick = () => showRecordDetails(r.id);
+    item.innerHTML = `
+      <div class="admin-record-main">
+        <div class="admin-record-user">
+          <span class="record-badge badge-${r.type.replace(/_/g,'-')}">${getTypeLabel(r.type)}</span>
         </div>
-        <div class="employee-details-stats">
-            <div class="employee-detail-stat">
-                <span class="employee-detail-stat-value">${emp.totalRecords}</span>
-                <span class="employee-detail-stat-label">Total</span>
-            </div>
-            <div class="employee-detail-stat">
-                <span class="employee-detail-stat-value">${todayRecords.length}</span>
-                <span class="employee-detail-stat-label">Hoje</span>
-            </div>
-            <div class="employee-detail-stat">
-                <span class="employee-detail-stat-value">${empRecords.filter(r => r.type === 'entrada').length}</span>
-                <span class="employee-detail-stat-label">Entradas</span>
-            </div>
-            <div class="employee-detail-stat">
-                <span class="employee-detail-stat-value">${empRecords.filter(r => r.type === 'saida').length}</span>
-                <span class="employee-detail-stat-label">Saídas</span>
-            </div>
+        <div class="admin-record-datetime">
+          <span>📅 ${esc(r.date)}</span>
+          <span>🕐 ${esc(r.time.slice(0,8))}</span>
         </div>
-        <h3 style="margin:25px 0 15px;font-size:20px">📋 Últimos Registros</h3>
-        <div class="admin-records-list">
-            ${empRecords.slice(0,10).map(r => `
-                <div class="admin-record-item" onclick="showRecordDetails(${r.id})" style="cursor:pointer">
-                    <div class="admin-record-main">
-                        <div class="admin-record-user">
-                            <span class="record-badge badge-${r.type.replace('_','-')}">${getTypeLabel(r.type)}</span>
-                        </div>
-                        <div class="admin-record-datetime">
-                            <span>📅 ${r.date}</span>
-                            <span>🕐 ${r.time}</span>
-                        </div>
-                    </div>
-                </div>
-            `).join('')}
-        </div>
+      </div>
     `;
-    document.getElementById('employeeModal').classList.remove('hidden');
+    recListEl.appendChild(item);
+  });
+
+  document.getElementById('employeeModal').classList.remove('hidden');
 }
 
 function closeEmployeeModal() {
-    document.getElementById('employeeModal').classList.add('hidden');
+  document.getElementById('employeeModal').classList.add('hidden');
 }
 
-// ==================== REGISTROS ====================
+/* ==================================================
+   REGISTROS
+   ================================================== */
 async function loadAllRecords() {
-    try {
-        if (!AppState.allRecords.length) {
-            const res = await fetch(`${API_URL}/records`);
-            AppState.allRecords = (await res.json()).records;
-        }
-        renderAdminRecords(AppState.allRecords);
-    } catch (err) {
-        showAlert('Erro ao carregar registros', 'error');
-    }
+  try {
+    const res = await fetch(`${API_URL}/records`);
+    App.records = (await res.json()).records || [];
+    renderAdminRecords(App.records);
+  } catch (err) {
+    showToast('Erro ao carregar registros: ' + err.message, 'error');
+  }
 }
 
 function renderAdminRecords(records) {
-    const list = document.getElementById('adminRecordsList');
-    const count = document.getElementById('recordsCount');
-    
-    if (!list) return;
-    if (count) count.textContent = `${records.length} registro${records.length !== 1 ? 's' : ''}`;
-    
-    if (!records.length) {
-        list.innerHTML = '<p class="empty-state">Nenhum registro</p>';
-        return;
-    }
-    
-    list.innerHTML = records.map(r => `
-        <div class="admin-record-item" onclick="showRecordDetails(${r.id})" style="cursor:pointer">
-            <div class="admin-record-main">
-                <div class="admin-record-user">
-                    <strong>${r.user_name}</strong>
-                    <span class="record-badge badge-${r.type.replace('_','-')}">${getTypeLabel(r.type)}</span>
-                </div>
-                <div class="admin-record-datetime">
-                    <span>📅 ${r.date}</span>
-                    <span>🕐 ${r.time}</span>
-                </div>
-            </div>
-            <div class="admin-record-actions">
-                ${r.photo ? '📷' : ''} ${r.latitude ? '📍' : ''}
-                <span>VER →</span>
-            </div>
+  const el    = document.getElementById('adminRecordsList');
+  const count = document.getElementById('recordsCount');
+  if (!el) return;
+
+  if (count) count.textContent = `${records.length} registro${records.length !== 1 ? 's' : ''}`;
+
+  if (!records.length) { el.innerHTML = '<p class="empty-state">Nenhum registro encontrado</p>'; return; }
+
+  el.innerHTML = '';
+  records.forEach(r => {
+    const item = document.createElement('div');
+    item.className = 'admin-record-item';
+    item.onclick = () => showRecordDetails(r.id);
+    item.innerHTML = `
+      <div class="admin-record-main">
+        <div class="admin-record-user">
+          <strong>${esc(r.user_name)}</strong>
+          <span class="record-badge badge-${r.type.replace(/_/g,'-')}">${getTypeLabel(r.type)}</span>
         </div>
-    `).join('');
+        <div class="admin-record-datetime">
+          <span>📅 ${esc(r.date)}</span>
+          <span>🕐 ${esc(r.time.slice(0,8))}</span>
+        </div>
+      </div>
+      <div class="admin-record-actions">
+        ${r.photo    ? '📷' : ''}
+        ${r.latitude ? '📍' : ''}
+        <span>VER →</span>
+      </div>
+    `;
+    el.appendChild(item);
+  });
 }
 
 function showRecordDetails(recordId) {
-    const record = AppState.allRecords.find(r => r.id === recordId);
-    if (!record) return;
-    
-    document.getElementById('recordDetails').innerHTML = `
-        <div class="record-details">
-            <div class="detail-row"><strong>👤 Colaborador:</strong><span>${record.user_name}</span></div>
-            <div class="detail-row"><strong>📧 Email:</strong><span>${record.user_email}</span></div>
-            <div class="detail-row">
-                <strong>⏱️ Tipo:</strong>
-                <span class="record-badge badge-${record.type.replace('_','-')}">${getTypeLabel(record.type)}</span>
-            </div>
-            <div class="detail-row"><strong>📅 Data/Hora:</strong><span>${record.date} ${record.time}</span></div>
-            ${record.photo ? `
-                <div class="detail-row detail-photo">
-                    <strong>📷 Foto:</strong>
-                    <img src="http://localhost:3000/uploads/${record.photo}" alt="Foto" style="border:3px solid var(--wd-yellow);margin-top:15px;max-width:100%;border-radius:12px">
-                </div>
-            ` : '<div class="detail-row"><strong>📷 Foto:</strong><span>Não capturada</span></div>'}
-            ${record.latitude ? `
-                <div class="detail-row"><strong>📍 Local:</strong><span>${record.address || `Lat:${record.latitude},Lon:${record.longitude}`}</span></div>
-                <div style="margin-top:16px">
-                    <a href="https://www.google.com/maps?q=${record.latitude},${record.longitude}" target="_blank" class="btn btn-primary">🗺️ GOOGLE MAPS</a>
-                </div>
-            ` : '<div class="detail-row"><strong>📍 Local:</strong><span>Não capturada</span></div>'}
+  const r = App.records.find(rec => rec.id === recordId);
+  if (!r) return;
+
+  // URL relativa (sem hardcoded localhost!)
+  const photoUrl = r.photo ? `/uploads/${r.photo}` : null;
+
+  const el = document.getElementById('recordDetails');
+  el.innerHTML = `
+    <div class="record-details">
+      <div class="detail-row">
+        <strong>👤 Colaborador</strong><span>${esc(r.user_name)}</span>
+      </div>
+      <div class="detail-row">
+        <strong>📧 Email</strong><span>${esc(r.user_email)}</span>
+      </div>
+      <div class="detail-row">
+        <strong>⏱️ Tipo</strong>
+        <span class="record-badge badge-${r.type.replace(/_/g,'-')}">${getTypeLabel(r.type)}</span>
+      </div>
+      <div class="detail-row">
+        <strong>📅 Data/Hora</strong><span>${esc(r.date)} ${esc(r.time.slice(0,8))}</span>
+      </div>
+      ${photoUrl ? `
+        <div class="detail-row detail-photo">
+          <strong>📷 Foto</strong>
+          <img src="${photoUrl}" alt="Foto do registro" loading="lazy">
         </div>
-    `;
-    document.getElementById('detailsModal').classList.remove('hidden');
+      ` : `<div class="detail-row"><strong>📷 Foto</strong><span>Não capturada</span></div>`}
+      ${r.latitude ? `
+        <div class="detail-row">
+          <strong>📍 Local</strong>
+          <span style="text-align:right">${esc(r.address || r.latitude + ', ' + r.longitude)}</span>
+        </div>
+        <div style="margin-top:12px">
+          <a href="https://www.google.com/maps?q=${r.latitude},${r.longitude}"
+             target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+            🗺️ Ver no Google Maps
+          </a>
+        </div>
+      ` : `<div class="detail-row"><strong>📍 Local</strong><span>Não capturado</span></div>`}
+    </div>
+  `;
+  document.getElementById('detailsModal').classList.remove('hidden');
 }
 
 function closeDetailsModal() {
-    document.getElementById('detailsModal').classList.add('hidden');
+  document.getElementById('detailsModal').classList.add('hidden');
 }
 
-// ==================== CONTINUA NA PARTE 2... ====================
-// ==================== ADMIN.JS - PARTE 2 DE 2 ====================
-// Cole este código LOGO APÓS a Parte 1
-
-// ==================== FILTROS ====================
+/* ==================================================
+   FILTROS
+   ================================================== */
 function applyFilters() {
-    const startDate = document.getElementById('filterStartDate').value;
-    const endDate = document.getElementById('filterEndDate').value;
-    const user = document.getElementById('filterUser').value;
-    const type = document.getElementById('filterType').value;
-    
-    let filtered = [...AppState.allRecords];
-    
-    if (startDate && endDate) {
-        filtered = filtered.filter(r => {
-            const [day, month, year] = r.date.split('/');
-            const recordDate = `${year}-${month}-${day}`;
-            return recordDate >= startDate && recordDate <= endDate;
-        });
-    }
-    
-    if (user) filtered = filtered.filter(r => r.user_name === user);
-    if (type) filtered = filtered.filter(r => r.type === type);
-    
-    renderAdminRecords(filtered);
-    showAlert(`${filtered.length} registro(s) encontrado(s)`, 'success');
+  const start = document.getElementById('filterStartDate').value;
+  const end   = document.getElementById('filterEndDate').value;
+  const user  = document.getElementById('filterUser').value;
+  const type  = document.getElementById('filterType').value;
+
+  let filtered = [...App.records];
+
+  if (start && end) {
+    filtered = filtered.filter(r => {
+      const iso = brToIso(r.date);
+      return iso >= start && iso <= end;
+    });
+  }
+
+  if (user) filtered = filtered.filter(r => r.user_name === user);
+  if (type) filtered = filtered.filter(r => r.type === type);
+
+  renderAdminRecords(filtered);
+  showToast(`${filtered.length} registro(s) encontrado(s)`, 'success');
 }
 
 function clearFilters() {
-    document.getElementById('filterStartDate').value = '';
-    document.getElementById('filterEndDate').value = '';
-    document.getElementById('filterUser').selectedIndex = 0;
-    document.getElementById('filterType').selectedIndex = 0;
-    renderAdminRecords(AppState.allRecords);
-    showAlert('Filtros limpos', 'success');
+  ['filterStartDate','filterEndDate'].forEach(id => document.getElementById(id).value = '');
+  ['filterUser','filterType'].forEach(id => document.getElementById(id).selectedIndex = 0);
+  renderAdminRecords(App.records);
+  showToast('Filtros limpos', 'success');
 }
 
-// ==================== EXPORTAÇÃO ====================
+/* ==================================================
+   EXPORTAÇÃO CSV
+   ================================================== */
 function exportRecords() {
-    if (!AppState.allRecords.length) {
-        showAlert('Nenhum registro para exportar!', 'error');
-        return;
-    }
-    
-    let csv = 'Nome,Email,Tipo,Data,Hora,Localização\n';
-    AppState.allRecords.forEach(r => {
-        const type = getTypeLabel(r.type).replace(/[🟢🟡🔵🔴]/g, '').trim();
-        csv += `"${r.user_name}","${r.user_email}","${type}","${r.date}","${r.time}","${r.address || 'N/A'}"\n`;
-    });
-    
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `WD_Registros_${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
-    
-    showAlert('CSV exportado!', 'success');
+  if (!App.records.length) { showToast('Nenhum registro para exportar!', 'error'); return; }
+
+  const header = 'Nome,Email,Tipo,Data,Hora,Localização\n';
+  const rows   = App.records.map(r => {
+    const label = getTypeLabel(r.type).replace(/[🟢🟡🔵🔴]/g,'').trim();
+    return `"${r.user_name}","${r.user_email}","${label}","${r.date}","${r.time}","${r.address || ''}"`;
+  }).join('\n');
+
+  const blob = new Blob(['\ufeff' + header + rows], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `WD_Registros_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('📥 CSV exportado com sucesso!', 'success');
 }
 
-// ==================== RELATÓRIOS ====================
+/* ==================================================
+   RELATÓRIOS
+   ================================================== */
 function generateDailyReport() {
-    const today = new Date().toLocaleDateString('pt-BR');
-    const todayRecords = AppState.allRecords.filter(r => r.date === today);
-    
-    showReportResult('Relatório Diário', `
-        <p><strong>Data:</strong> ${today}</p>
-        <p><strong>Total:</strong> ${todayRecords.length}</p>
-        <p><strong>Colaboradores:</strong> ${new Set(todayRecords.map(r => r.user_name)).size}</p>
-        ${todayRecords.length ? '<h4>Registros:</h4>' + todayRecords.map(r => 
-            `<p>• ${r.user_name} - ${getTypeLabel(r.type)} ${r.time}</p>`
-        ).join('') : '<p>Nenhum registro hoje</p>'}
-    `);
+  const today   = new Date().toLocaleDateString('pt-BR');
+  const records = App.records.filter(r => r.date === today);
+  const users   = new Set(records.map(r => r.user_name));
+
+  let html = `
+    <p><strong>Data:</strong> ${today}</p>
+    <p><strong>Total de registros:</strong> ${records.length}</p>
+    <p><strong>Colaboradores presentes:</strong> ${users.size}</p>
+  `;
+
+  if (records.length) {
+    html += '<br><table style="width:100%;border-collapse:collapse">' +
+      '<thead><tr style="background:rgba(255,215,0,0.1)">' +
+      '<th style="padding:10px;border:1px solid var(--border);text-align:left">Colaborador</th>' +
+      '<th style="padding:10px;border:1px solid var(--border)">Tipo</th>' +
+      '<th style="padding:10px;border:1px solid var(--border)">Hora</th>' +
+      '</tr></thead><tbody>';
+    records.forEach(r => {
+      html += `<tr>
+        <td style="padding:10px;border:1px solid var(--border)">${esc(r.user_name)}</td>
+        <td style="padding:10px;border:1px solid var(--border);text-align:center">${getTypeLabel(r.type)}</td>
+        <td style="padding:10px;border:1px solid var(--border);text-align:center">${esc(r.time.slice(0,8))}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p style="margin-top:16px;color:var(--text-muted)">Nenhum registro hoje.</p>';
+  }
+
+  showReportResult('📅 Relatório Diário — ' + today, html);
 }
 
 function generateWeeklyReport() {
-    const today = new Date();
-    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
-    const weekRecords = AppState.allRecords.filter(r => {
-        const [day, month, year] = r.date.split('/');
-        const recordDate = new Date(year, month - 1, day);
-        return recordDate >= weekAgo && recordDate <= today;
-    });
-    
-    showReportResult('Relatório Semanal', `
-        <p><strong>Período:</strong> Últimos 7 dias</p>
-        <p><strong>Total:</strong> ${weekRecords.length}</p>
-        <p><strong>Colaboradores:</strong> ${new Set(weekRecords.map(r => r.user_name)).size}</p>
-        <p><strong>Média/dia:</strong> ${Math.round(weekRecords.length / 7)}</p>
-    `);
+  const now     = new Date();
+  const weekAgo = new Date(now - 7*24*60*60*1000);
+  const records = App.records.filter(r => {
+    const [d,m,y] = r.date.split('/');
+    const dt = new Date(+y, +m-1, +d);
+    return dt >= weekAgo && dt <= now;
+  });
+
+  const byDay = {};
+  records.forEach(r => {
+    byDay[r.date] = (byDay[r.date] || 0) + 1;
+  });
+
+  showReportResult('📆 Relatório Semanal', `
+    <p><strong>Período:</strong> Últimos 7 dias</p>
+    <p><strong>Total:</strong> ${records.length}</p>
+    <p><strong>Colaboradores:</strong> ${new Set(records.map(r=>r.user_name)).size}</p>
+    <p><strong>Média/dia:</strong> ${(records.length/7).toFixed(1)}</p>
+  `);
 }
 
-function generateMonthlyReport() {
-    openEspelhoModal();
-}
+function generateMonthlyReport() { openEspelhoModal(); }
 
 function generateEmployeeReport() {
-    if (!AppState.allEmployees.length) {
-        showAlert('Carregue colaboradores primeiro', 'error');
-        return;
-    }
-    
-    const html = AppState.allEmployees.map(emp => {
-        const empRecords = AppState.allRecords.filter(r => r.user_email === emp.email);
-        return `
-            <div style="margin-bottom:20px;padding:15px;background:rgba(0,0,0,0.2);border-radius:8px">
-                <h4>${emp.name}</h4>
-                <p>Total: ${empRecords.length} | Entradas: ${empRecords.filter(r => r.type === 'entrada').length} | Saídas: ${empRecords.filter(r => r.type === 'saida').length}</p>
-            </div>
-        `;
-    }).join('');
-    
-    showReportResult('Relatório por Colaborador', html);
+  if (!App.employees.length) {
+    showToast('Acesse a aba Colaboradores primeiro', 'error'); return;
+  }
+  let html = '';
+  App.employees.forEach(emp => {
+    const recs = App.records.filter(r => r.user_email === emp.email);
+    html += `
+      <div style="margin-bottom:16px;padding:16px;background:rgba(0,0,0,0.2);border-radius:10px;
+                  border-left:3px solid var(--yellow)">
+        <h4 style="margin-bottom:8px">${esc(emp.name)}</h4>
+        <p style="font-size:13px;color:var(--text-muted)">
+          Total: ${recs.length} |
+          Entradas: ${recs.filter(r=>r.type==='entrada').length} |
+          Saídas: ${recs.filter(r=>r.type==='saida').length}
+        </p>
+      </div>
+    `;
+  });
+  showReportResult('👤 Relatório por Colaborador', html);
 }
 
 function showReportResult(title, content) {
-    const result = document.getElementById('reportResult');
-    if (!result) return;
-    result.innerHTML = `<h3>${title}</h3>${content}`;
-    result.classList.add('active');
-    result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const el = document.getElementById('reportResult');
+  if (!el) return;
+  el.innerHTML = `<h3>${title}</h3>${content}`;
+  el.classList.add('active');
+  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
-// ==================== ESPELHO DE PONTO ====================
+/* ==================================================
+   ESPELHO DE PONTO
+   ================================================== */
 function openEspelhoModal() {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.id = 'espelhoModal';
-    modal.innerHTML = `
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>📋 GERAR ESPELHO DE PONTO</h2>
-                <button onclick="closeEspelhoModal()" class="btn-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Colaborador:</label>
-                    <select id="espelhoUser" class="form-control">
-                        <option value="">Todos</option>
-                        ${[...new Set(AppState.allRecords.map(r => r.user_name))].map(name => 
-                            `<option value="${name}">${name}</option>`
-                        ).join('')}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Mês/Ano:</label>
-                    <input type="month" id="espelhoMonth" class="form-control" value="${new Date().toISOString().slice(0,7)}">
-                </div>
-                <button onclick="gerarEspelhoPonto()" class="btn btn-primary btn-large">📄 GERAR</button>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-}
+  const existing = document.getElementById('espelhoModal');
+  if (existing) existing.remove();
 
-function closeEspelhoModal() {
-    document.getElementById('espelhoModal')?.remove();
+  const users = [...new Set(App.records.map(r => r.user_name))].sort();
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.id        = 'espelhoModal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>📋 Espelho de Ponto</h2>
+        <button class="btn-close" onclick="document.getElementById('espelhoModal').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Colaborador</label>
+          <select id="espelhoUser" class="form-control">
+            <option value="">Todos</option>
+            ${users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Mês/Ano</label>
+          <input type="month" id="espelhoMonth" class="form-control"
+            value="${new Date().toISOString().slice(0,7)}">
+        </div>
+        <button onclick="gerarEspelhoPonto()" class="btn btn-primary btn-large">📄 Gerar Espelho</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
 }
 
 function gerarEspelhoPonto() {
-    const userName = document.getElementById('espelhoUser').value;
-    const monthYear = document.getElementById('espelhoMonth').value;
-    
-    if (!monthYear) {
-        showAlert('Selecione mês/ano', 'error');
-        return;
-    }
-    
-    const [year, month] = monthYear.split('-');
-    const monthName = new Date(year, month - 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-    
-    let records = AppState.allRecords.filter(r => {
-        const [day, m, y] = r.date.split('/');
-        return y === year && m === month.padStart(2, '0');
-    });
-    
-    if (userName) records = records.filter(r => r.user_name === userName);
-    
-    if (!records.length) {
-        showAlert('Nenhum registro encontrado', 'error');
-        return;
-    }
-    
-    const byUser = {};
-    records.forEach(r => {
-        if (!byUser[r.user_name]) byUser[r.user_name] = {};
-        if (!byUser[r.user_name][r.date]) byUser[r.user_name][r.date] = [];
-        byUser[r.user_name][r.date].push(r);
-    });
-    
-    let espelhoHTML = '';
-    Object.keys(byUser).forEach(user => {
-        espelhoHTML += gerarTabelaEspelho(user, monthName, byUser[user]);
-    });
-    
-    closeEspelhoModal();
-    mostrarEspelhoGerado(monthName, espelhoHTML);
+  const userName  = document.getElementById('espelhoUser').value;
+  const monthYear = document.getElementById('espelhoMonth').value;
+  if (!monthYear) { showToast('Selecione o mês/ano', 'error'); return; }
+
+  const [year, month] = monthYear.split('-');
+  const monthLabel = new Date(+year, +month-1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  let records = App.records.filter(r => {
+    const [,m,y] = r.date.split('/');
+    return y === year && m === month.padStart(2,'0');
+  });
+  if (userName) records = records.filter(r => r.user_name === userName);
+
+  if (!records.length) { showToast('Nenhum registro neste período', 'error'); return; }
+
+  // Agrupa por usuário e data
+  const byUser = {};
+  records.forEach(r => {
+    if (!byUser[r.user_name]) byUser[r.user_name] = {};
+    if (!byUser[r.user_name][r.date]) byUser[r.user_name][r.date] = [];
+    byUser[r.user_name][r.date].push(r);
+  });
+
+  let html = '';
+  Object.keys(byUser).forEach(u => {
+    html += buildEspelhoTable(u, monthLabel, byUser[u]);
+  });
+
+  document.getElementById('espelhoModal')?.remove();
+  showEspelhoResult(monthLabel.toUpperCase(), html);
 }
 
-function gerarTabelaEspelho(userName, monthName, userRecords) {
-    const dates = Object.keys(userRecords).sort((a, b) => {
-        const [dayA, monthA, yearA] = a.split('/');
-        const [dayB, monthB, yearB] = b.split('/');
-        return new Date(yearA, monthA - 1, dayA) - new Date(yearB, monthB - 1, dayB);
-    });
-    
-    const horasCalc = new HorasCalculadas();
-    let tableRows = '';
-    let daysWorked = 0;
-    
-    dates.forEach(date => {
-        const dayRecords = userRecords[date].sort((a, b) => a.timestamp - b.timestamp);
-        const [day] = date.split('/');
-        
-        const entrada = dayRecords.find(r => r.type === 'entrada');
-        const saidaAlmoco = dayRecords.find(r => r.type === 'saida_almoco');
-        const retornoAlmoco = dayRecords.find(r => r.type === 'retorno_almoco');
-        const saida = dayRecords.find(r => r.type === 'saida');
-        
-        let minutesWorked = 0;
-        if (entrada && saidaAlmoco) minutesWorked += calcMinutes(entrada.time, saidaAlmoco.time);
-        if (retornoAlmoco && saida) minutesWorked += calcMinutes(retornoAlmoco.time, saida.time);
-        
-        const dayOfWeek = getDayOfWeek(date);
-        const dateFormatted = formatDateForComparison(date);
-        const isFeriadoDay = isFeriado(dateFormatted);
-        
-        let tipoDia = '';
-        let tipoDiaClass = '';
-        
-        if (isFeriadoDay) {
-            tipoDia = '🎊 FERIADO';
-            tipoDiaClass = 'feriado';
-            horasCalc.domingoseFeriados += minutesWorked;
-        } else if (dayOfWeek === 0) {
-            tipoDia = '☀️ DOMINGO';
-            tipoDiaClass = 'domingo';
-            horasCalc.domingoseFeriados += minutesWorked;
-        } else if (dayOfWeek === 6) {
-            tipoDia = '📅 SÁBADO';
-            tipoDiaClass = 'sabado';
-            horasCalc.sabados += minutesWorked;
-        } else {
-            tipoDia = '📋 DIA ÚTIL';
-            tipoDiaClass = 'dia-util';
-            horasCalc.diasUteis += minutesWorked;
-        }
-        
-        if (minutesWorked > 0) daysWorked++;
-        
-        const hoursWorked = minutesWorked > 0 ? formatMinutes(minutesWorked) : '-';
-        const bgColor = tipoDiaClass === 'feriado' || tipoDiaClass === 'domingo' ? '#ffe5e5' : 
-                        tipoDiaClass === 'sabado' ? '#fff8e5' : '#f9f9f9';
-        
-        tableRows += `
-            <tr>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:600">${day}</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-size:12px;font-weight:600">${tipoDia}</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center">${entrada ? entrada.time : '-'}</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center">${saidaAlmoco ? saidaAlmoco.time : '-'}</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center">${retornoAlmoco ? retornoAlmoco.time : '-'}</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center">${saida ? saida.time : '-'}</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:${bgColor}">${hoursWorked}</td>
-            </tr>
-        `;
-    });
-    
-    const resumo = horasCalc.getResumo();
-    
-    return `
-        <div style="page-break-after:always;margin-bottom:40px">
-            <div style="background:linear-gradient(135deg,#FFD700,#FFA500);color:#0a0a0a;padding:30px;border-radius:16px 16px 0 0;text-align:center">
-                <h2 style="margin:0;font-size:28px;text-transform:uppercase;letter-spacing:2px">WD MANUTENÇÕES</h2>
-                <h3 style="margin:10px 0 0;font-size:20px">ESPELHO DE PONTO ELETRÔNICO</h3>
-            </div>
-            
-            <div style="background:white;color:black;padding:30px;border-radius:0 0 16px 16px">
-                <div style="margin-bottom:25px;border-bottom:2px solid #FFD700;padding-bottom:15px">
-                    <p style="margin:5px 0"><strong>COLABORADOR:</strong> ${userName}</p>
-                    <p style="margin:5px 0"><strong>PERÍODO:</strong> ${monthName.toUpperCase()}</p>
-                    <p style="margin:5px 0"><strong>EMISSÃO:</strong> ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>
-                </div>
-                
-                <table style="width:100%;border-collapse:collapse;margin-top:20px">
-                    <thead>
-                        <tr style="background:#FFD700;color:#0a0a0a">
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">DIA</th>
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">TIPO</th>
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">ENTRADA</th>
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">SAÍDA ALMOÇO</th>
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">RETORNO</th>
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">SAÍDA</th>
-                            <th style="padding:12px;border:1px solid #ddd;text-align:center">TOTAL</th>
-                        </tr>
-                    </thead>
-                    <tbody>${tableRows}</tbody>
-                </table>
-                
-                <div style="margin-top:30px;padding:20px;background:#f8f9fa;border-radius:12px;border:2px solid #FFD700">
-                    <h3 style="margin:0 0 20px;text-align:center">📊 RESUMO COM ADICIONAIS</h3>
-                    <table style="width:100%;border-collapse:collapse">
-                        <thead>
-                            <tr style="background:#FFD700;color:#0a0a0a">
-                                <th style="padding:12px;border:1px solid #ddd">TIPO</th>
-                                <th style="padding:12px;border:1px solid #ddd;text-align:center">HORAS</th>
-                                <th style="padding:12px;border:1px solid #ddd;text-align:center">ADICIONAL</th>
-                                <th style="padding:12px;border:1px solid #ddd;text-align:center">ADICIONAL (h)</th>
-                                <th style="padding:12px;border:1px solid #ddd;text-align:center">TOTAL</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr style="background:#f9f9f9">
-                                <td style="padding:12px;border:1px solid #ddd">📋 Dias Úteis</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700">${resumo.diasUteis.horas}<br><small>(${resumo.diasUteis.decimal}h)</small></td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center">0%</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center">-</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700;background:#e8f5e9">${resumo.diasUteis.horas}<br><small>(${resumo.diasUteis.decimal}h)</small></td>
-                            </tr>
-                            <tr style="background:#fff8e5">
-                                <td style="padding:12px;border:1px solid #ddd">📅 Sábados</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700">${resumo.sabados.horas}<br><small>(${resumo.sabados.decimal}h)</small></td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;color:#f59e0b;font-weight:600">+50%</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;color:#f59e0b;font-weight:600">${resumo.sabados.adicional}h</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fef3c7">${resumo.sabados.total}h<br><small>(${resumo.sabados.decimal}h × 1.5)</small></td>
-                            </tr>
-                            <tr style="background:#ffe5e5">
-                                <td style="padding:12px;border:1px solid #ddd">☀️ Domingos/Feriados</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700">${resumo.domingosFeriados.horas}<br><small>(${resumo.domingosFeriados.decimal}h)</small></td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;color:#ef4444;font-weight:600">+100%</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;color:#ef4444;font-weight:600">${resumo.domingosFeriados.adicional}h</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fee2e2">${resumo.domingosFeriados.total}h<br><small>(${resumo.domingosFeriados.decimal}h × 2.0)</small></td>
-                            </tr>
-                        </tbody>
-                        <tfoot>
-                            <tr style="background:#FFD700;color:#0a0a0a">
-                                <td colspan="4" style="padding:15px;border:1px solid #ddd;text-align:right;font-weight:800;font-size:16px">💰 TOTAL GERAL:</td>
-                                <td style="padding:15px;border:1px solid #ddd;text-align:center;font-weight:900;font-size:18px">${resumo.totalGeral.horas}<br><small style="font-size:14px">(${resumo.totalGeral.decimal}h)</small></td>
-                            </tr>
-                            <tr style="background:#f5f5f5">
-                                <td colspan="4" style="padding:12px;border:1px solid #ddd;text-align:right;font-weight:600">DIAS TRABALHADOS:</td>
-                                <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:700">${daysWorked} dias</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-                
-                <div style="margin-top:25px;padding:15px;background:#f0f0f0;border-radius:8px">
-                    <h4 style="margin:0 0 10px;font-size:14px">📌 LEGENDA:</h4>
-                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;font-size:13px">
-                        <div>📋 Dia Útil: Seg-Sex</div>
-                        <div>📅 Sábado: +50%</div>
-                        <div>☀️ Domingo/Feriado: +100%</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top:40px;padding-top:20px;border-top:2px solid #FFD700">
-                    <p style="margin:20px 0;font-size:12px;color:#666;text-align:center">
-                        Documento válido como comprovante de registro eletrônico (CLT Art. 59).<br>
-                        Gerado por Sistema WD Manutenções em ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}
-                    </p>
-                    <div style="margin-top:50px;display:flex;justify-content:space-around">
-                        <div style="text-align:center">
-                            <div style="border-top:2px solid black;width:250px;margin:0 auto"></div>
-                            <p style="margin-top:10px;font-size:13px;font-weight:600">Assinatura do Colaborador</p>
-                        </div>
-                        <div style="text-align:center">
-                            <div style="border-top:2px solid black;width:250px;margin:0 auto"></div>
-                            <p style="margin-top:10px;font-size:13px;font-weight:600">Assinatura do Responsável</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+function buildEspelhoTable(userName, monthLabel, userRecords) {
+  const dates = Object.keys(userRecords).sort((a,b) => {
+    const toDate = d => { const [dd,mm,yy]=d.split('/'); return new Date(+yy,+mm-1,+dd); };
+    return toDate(a) - toDate(b);
+  });
+
+  let horasUteis = 0, horasSab = 0, horasDomFer = 0;
+  let daysWorked = 0, incompletos = 0;
+  let rows = '';
+
+  dates.forEach(date => {
+    const day    = userRecords[date].sort((a,b)=>a.timestamp-b.timestamp);
+    const dd     = date.split('/')[0];
+    const dow    = getDow(date);
+    const isofmt = brToIso(date);
+    const isFer  = isFeriado(isofmt);
+
+    const entrada        = day.find(r=>r.type==='entrada');
+    const saidaAlm       = day.find(r=>r.type==='saida_almoco');
+    const retornoAlm     = day.find(r=>r.type==='retorno_almoco');
+    const saida          = day.find(r=>r.type==='saida');
+
+    let mins = 0;
+    if (entrada && saidaAlm)    mins += calcMinutes(entrada.time, saidaAlm.time);
+    if (retornoAlm && saida)    mins += calcMinutes(retornoAlm.time, saida.time);
+
+    // Detecta dias incompletos
+    const hasEntrada = !!entrada;
+    const hasSaida   = !!saida;
+    const incomplete = hasEntrada && !hasSaida;
+    if (incomplete) incompletos++;
+
+    let tipoDia, bgColor;
+    if (isFer)        { tipoDia = '🎊 Feriado'; bgColor = '#ffe5e5'; horasDomFer += mins; }
+    else if (dow===0) { tipoDia = '☀️ Domingo'; bgColor = '#ffe5e5'; horasDomFer += mins; }
+    else if (dow===6) { tipoDia = '📅 Sábado';  bgColor = '#fff8e5'; horasSab    += mins; }
+    else              { tipoDia = '📋 Dia Útil'; bgColor = '#f9f9f9'; horasUteis  += mins; }
+
+    if (mins > 0) daysWorked++;
+
+    const total = mins > 0 ? fmtMin(mins) : incomplete ? '⚠️ Incompleto' : '-';
+    const totalStyle = incomplete ? 'color:#ff9100;font-weight:700' : 'font-weight:700';
+
+    rows += `<tr style="background:${bgColor}">
+      <td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:600">${dd}</td>
+      <td style="padding:9px;border:1px solid #ddd;text-align:center;font-size:11px;font-weight:600">${tipoDia}</td>
+      <td style="padding:9px;border:1px solid #ddd;text-align:center">${entrada    ? entrada.time.slice(0,5)    : '-'}</td>
+      <td style="padding:9px;border:1px solid #ddd;text-align:center">${saidaAlm   ? saidaAlm.time.slice(0,5)   : '-'}</td>
+      <td style="padding:9px;border:1px solid #ddd;text-align:center">${retornoAlm ? retornoAlm.time.slice(0,5) : '-'}</td>
+      <td style="padding:9px;border:1px solid #ddd;text-align:center">${saida      ? saida.time.slice(0,5)      : '-'}</td>
+      <td style="padding:9px;border:1px solid #ddd;text-align:center;${totalStyle}">${total}</td>
+    </tr>`;
+  });
+
+  // Totais com adicionais
+  const totUteis   = horasUteis;
+  const totSab     = Math.round(horasSab * 1.5);
+  const totDomFer  = Math.round(horasDomFer * 2.0);
+  const totalGeral = totUteis + totSab + totDomFer;
+
+  const avisoIncompleto = incompletos > 0
+    ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-top:16px;color:#856404">
+        ⚠️ <strong>${incompletos} dia(s) com registro incompleto</strong> (entrada sem saída correspondente).
+        Estes dias não foram contabilizados nas horas totais.
+       </div>` : '';
+
+  return `
+    <div style="page-break-after:always;margin-bottom:40px;font-family:Arial,sans-serif">
+      <div style="background:linear-gradient(135deg,#FFD700,#FFA500);color:#0a0a0a;padding:24px 32px;
+                  border-radius:12px 12px 0 0;text-align:center">
+        <h2 style="margin:0;font-size:24px;font-weight:900;letter-spacing:3px;text-transform:uppercase">
+          WD MANUTENÇÕES
+        </h2>
+        <h3 style="margin:8px 0 0;font-size:16px;font-weight:600">
+          ESPELHO DE PONTO ELETRÔNICO
+        </h3>
+      </div>
+
+      <div style="background:white;color:#111;padding:28px;border-radius:0 0 12px 12px;
+                  border:1px solid #ddd;border-top:none">
+        <div style="margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #FFD700">
+          <p style="margin:4px 0"><strong>COLABORADOR:</strong> ${esc(userName)}</p>
+          <p style="margin:4px 0"><strong>PERÍODO:</strong> ${monthLabel.toUpperCase()}</p>
+          <p style="margin:4px 0"><strong>EMISSÃO:</strong>
+            ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}
+          </p>
         </div>
-    `;
+
+        <table style="width:100%;border-collapse:collapse">
+          <thead>
+            <tr style="background:#FFD700;color:#0a0a0a">
+              <th style="padding:10px;border:1px solid #ddd">DIA</th>
+              <th style="padding:10px;border:1px solid #ddd">TIPO</th>
+              <th style="padding:10px;border:1px solid #ddd">ENTRADA</th>
+              <th style="padding:10px;border:1px solid #ddd">S. ALMOÇO</th>
+              <th style="padding:10px;border:1px solid #ddd">RETORNO</th>
+              <th style="padding:10px;border:1px solid #ddd">SAÍDA</th>
+              <th style="padding:10px;border:1px solid #ddd">TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+
+        ${avisoIncompleto}
+
+        <div style="margin-top:24px;padding:18px;background:#f8f9fa;border-radius:10px;
+                    border:2px solid #FFD700">
+          <h3 style="margin:0 0 16px;text-align:center;font-size:16px">📊 RESUMO COM ADICIONAIS</h3>
+          <table style="width:100%;border-collapse:collapse">
+            <thead>
+              <tr style="background:#FFD700;color:#0a0a0a">
+                <th style="padding:10px;border:1px solid #ddd;text-align:left">Tipo</th>
+                <th style="padding:10px;border:1px solid #ddd;text-align:center">Horas</th>
+                <th style="padding:10px;border:1px solid #ddd;text-align:center">Adicional</th>
+                <th style="padding:10px;border:1px solid #ddd;text-align:center">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background:#f9f9f9">
+                <td style="padding:10px;border:1px solid #ddd">📋 Dias Úteis</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasUteis)} (${fmtDec(horasUteis)}h)</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center">—</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:#e8f5e9">${fmtMin(horasUteis)}</td>
+              </tr>
+              <tr style="background:#fff8e5">
+                <td style="padding:10px;border:1px solid #ddd">📅 Sábados</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasSab)} (${fmtDec(horasSab)}h)</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;color:#d97706;font-weight:600">+50%</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fef3c7">${fmtMin(totSab)}</td>
+              </tr>
+              <tr style="background:#ffe5e5">
+                <td style="padding:10px;border:1px solid #ddd">☀️ Dom/Feriados</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasDomFer)} (${fmtDec(horasDomFer)}h)</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;color:#dc2626;font-weight:600">+100%</td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fee2e2">${fmtMin(totDomFer)}</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr style="background:#FFD700;color:#0a0a0a">
+                <td colspan="3" style="padding:13px;border:1px solid #ddd;text-align:right;font-weight:800;font-size:15px">
+                  💰 TOTAL GERAL:
+                </td>
+                <td style="padding:13px;border:1px solid #ddd;text-align:center;font-weight:900;font-size:17px">
+                  ${fmtMin(totalGeral)} (${fmtDec(totalGeral)}h)
+                </td>
+              </tr>
+              <tr style="background:#f5f5f5">
+                <td colspan="3" style="padding:10px;border:1px solid #ddd;text-align:right;font-weight:600">
+                  DIAS TRABALHADOS:
+                </td>
+                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">
+                  ${daysWorked} dias
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div style="margin-top:20px;padding:12px;background:#f0f0f0;border-radius:8px;font-size:12px">
+          <strong>📌 LEGENDA:</strong>
+          Dia Útil (Seg–Sex): sem adicional &nbsp;|&nbsp;
+          Sábado: +50% &nbsp;|&nbsp;
+          Domingo/Feriado: +100%
+        </div>
+
+        <div style="margin-top:40px;padding-top:20px;border-top:2px solid #FFD700">
+          <p style="text-align:center;font-size:11px;color:#666;margin-bottom:40px">
+            Documento gerado eletronicamente pelo Sistema WD Manutenções.<br>
+            Válido conforme CLT Art. 74, § 2º. Gerado em
+            ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}
+          </p>
+          <div style="display:flex;justify-content:space-around;gap:40px">
+            <div style="text-align:center;flex:1">
+              <div style="border-top:2px solid #000;margin-bottom:8px"></div>
+              <p style="font-size:12px;font-weight:600">Assinatura do Colaborador</p>
+            </div>
+            <div style="text-align:center;flex:1">
+              <div style="border-top:2px solid #000;margin-bottom:8px"></div>
+              <p style="font-size:12px;font-weight:600">Assinatura do Responsável</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-function mostrarEspelhoGerado(monthName, espelhoHTML) {
+function showEspelhoResult(monthLabel, html) {
+  const existing = document.getElementById('espelhoResultModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.id = 'espelhoResultModal';
+  modal.innerHTML = `
+    <div class="modal-content modal-large" style="max-height:92vh;overflow-y:auto">
+      <div class="modal-header">
+        <h2>📋 Espelho — ${monthLabel}</h2>
+        <button class="btn-close" onclick="document.getElementById('espelhoResultModal').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        ${html}
+        <div style="text-align:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
+          <button onclick="window.print()" class="btn btn-primary" style="margin-right:10px">
+            🖨️ Imprimir / Salvar PDF
+          </button>
+          <button onclick="document.getElementById('espelhoResultModal').remove()" class="btn btn-secondary">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+/* ==================================================
+   AÇÕES DESTRUTIVAS (com modal de confirmação)
+   ================================================== */
+async function clearAllRecords() {
+  const confirmed = await confirmDialog(
+    '🗑️ Limpar Todos os Registros',
+    'Esta ação é IRREVERSÍVEL. Todos os registros de ponto de TODOS os colaboradores serão apagados. Deseja continuar?',
+    'Sim, apagar tudo',
+    'btn-danger'
+  );
+  if (!confirmed) return;
+
+  try {
+    const res  = await fetch(`${API_URL}/records`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_id: adminId() })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro');
+    App.records = [];
+    await loadDashboard();
+    if (App.currentTab === 'employees') loadEmployees();
+    if (App.currentTab === 'records')   renderAdminRecords([]);
+    showToast('Todos os registros foram removidos.', 'success');
+  } catch (err) {
+    showToast('Erro: ' + err.message, 'error');
+  }
+}
+
+async function deleteEmployee(event, userId, userName) {
+  event.stopPropagation();
+
+  const confirmed = await confirmDialog(
+    '🗑️ Excluir Colaborador',
+    `Deseja excluir a conta de "${userName}"? Todos os registros dessa pessoa também serão removidos.`,
+    'Sim, excluir',
+    'btn-danger'
+  );
+  if (!confirmed) return;
+
+  try {
+    const res  = await fetch(`${API_URL}/users/${userId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_id: adminId() })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro');
+    showToast(`Conta de "${userName}" excluída.`, 'success');
+    await loadEmployees();
+    await loadDashboard();
+  } catch (err) {
+    showToast('Erro: ' + err.message, 'error');
+  }
+}
+
+/* Modal de confirmação customizado (substitui window.confirm) */
+function confirmDialog(title, message, okText = 'Confirmar', okClass = 'btn-primary') {
+  return new Promise(resolve => {
+    const existing = document.getElementById('confirmModal');
+    if (existing) existing.remove();
+
     const modal = document.createElement('div');
     modal.className = 'modal';
-    modal.id = 'espelhoResultModal';
+    modal.id = 'confirmModal';
     modal.innerHTML = `
-        <div class="modal-content" style="max-width:1200px;max-height:90vh;overflow-y:auto">
-            <div class="modal-header">
-                <h2>📋 ESPELHO DE PONTO - ${monthName.toUpperCase()}</h2>
-                <button onclick="closeEspelhoResult()" class="btn-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                ${espelhoHTML}
-                <div style="text-align:center;margin-top:30px;padding-top:20px;border-top:2px solid #FFD700">
-                    <button onclick="window.print()" class="btn btn-primary" style="margin-right:10px">🖨️ IMPRIMIR</button>
-                    <button onclick="showAlert('Use Ctrl+P e selecione Salvar como PDF','info')" class="btn btn-secondary">📄 SALVAR PDF</button>
-                </div>
-            </div>
+      <div class="modal-content" style="max-width:440px">
+        <div class="modal-header">
+          <h2>${title}</h2>
+          <button class="btn-close" onclick="document.getElementById('confirmModal').remove()">×</button>
         </div>
+        <div class="modal-body">
+          <p style="line-height:1.6;color:var(--text-muted);margin-bottom:24px">${message}</p>
+          <div style="display:flex;gap:12px;justify-content:flex-end">
+            <button class="btn btn-secondary" onclick="document.getElementById('confirmModal').remove()">
+              Cancelar
+            </button>
+            <button class="btn ${okClass}" id="confirmOkBtn">${okText}</button>
+          </div>
+        </div>
+      </div>
     `;
     document.body.appendChild(modal);
-}
-
-function closeEspelhoResult() {
-    document.getElementById('espelhoResultModal')?.remove();
-}
-
-
-async function clearAllRecords() {
-    if (!confirm('Tem certeza que deseja apagar TODOS os registros de ponto? Esta ação não pode ser desfeita.')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_URL}/records`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin_id: getAdminId() })
-        });
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Erro ao limpar registros');
-
-        AppState.allRecords = [];
-        await loadDashboard();
-        if (AppState.currentTab === 'employees') await loadEmployees();
-        if (AppState.currentTab === 'records') loadAllRecords();
-
-        showAlert('Todos os registros foram removidos com sucesso.', 'success');
-    } catch (error) {
-        showAlert('Erro ao limpar registros: ' + error.message, 'error');
-    }
-}
-
-async function deleteEmployeeAccount(event, userId, userName) {
-    event.stopPropagation();
-
-    if (!confirm(`Deseja excluir a conta de ${userName}?
-Todos os registros dessa pessoa também serão removidos.`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`${API_URL}/users/${userId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ admin_id: getAdminId() })
-        });
-
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Erro ao excluir conta');
-
-        showAlert('Conta excluída com sucesso.', 'success');
-        await loadEmployees();
-        await loadDashboard();
-    } catch (error) {
-        showAlert('Erro ao excluir conta: ' + error.message, 'error');
-    }
-}
-
-// ==================== UTILITÁRIOS ====================
-function getTypeLabel(type) {
-    const labels = {
-        'entrada': '🟢 Entrada',
-        'saida_almoco': '🟡 Saída Almoço',
-        'retorno_almoco': '🔵 Retorno Almoço',
-        'saida': '🔴 Saída'
+    modal.querySelector('#confirmOkBtn').onclick = () => {
+      modal.remove();
+      resolve(true);
     };
-    return labels[type] || type;
+    modal.addEventListener('click', e => {
+      if (e.target === modal) { modal.remove(); resolve(false); }
+    });
+  });
+}
+
+/* ==================================================
+   UTILITÁRIOS
+   ================================================== */
+function getTypeLabel(type) {
+  return { entrada:'🟢 Entrada', saida_almoco:'🟡 Saída Almoço',
+           retorno_almoco:'🔵 Retorno Almoço', saida:'🔴 Saída' }[type] || type;
 }
 
 function getTypeEmoji(type) {
-    const emojis = { 'entrada': '🟢', 'saida_almoco': '🟡', 'retorno_almoco': '🔵', 'saida': '🔴' };
-    return emojis[type] || '⚪';
+  return { entrada:'🟢', saida_almoco:'🟡', retorno_almoco:'🔵', saida:'🔴' }[type] || '⚪';
 }
 
-function showAlert(message, type = 'success') {
-    const alert = document.createElement('div');
-    alert.style.cssText = `
-        position:fixed;top:30px;right:30px;
-        background:${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
-        color:white;padding:20px 30px;border-radius:12px;
-        box-shadow:0 10px 40px rgba(0,0,0,0.3);z-index:10000;
-        font-weight:700;animation:slideIn 0.3s ease;max-width:400px`;
-    alert.textContent = message;
-    document.body.appendChild(alert);
-    setTimeout(() => {
-        alert.style.animation = 'slideOut 0.3s ease';
-        setTimeout(() => alert.remove(), 300);
-    }, 3000);
+/* ==================================================
+   SCROLL
+   ================================================== */
+function updateScrollButtons() {
+  const top  = window.pageYOffset;
+  const h    = document.documentElement.scrollHeight;
+  const view = window.innerHeight;
+  document.getElementById('scrollToTop')?.classList.toggle('visible', top > 300);
+  const botBtn = document.getElementById('scrollToBottom');
+  if (botBtn) botBtn.style.display = top + view >= h - 80 ? 'none' : 'flex';
 }
 
-function handleScrollButtons() {
-    const scrollToTop = document.getElementById('scrollToTop');
-    const scrollToBottom = document.getElementById('scrollToBottom');
-    if (!scrollToTop || !scrollToBottom) return;
-    
-    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    const windowHeight = window.innerHeight;
-    const documentHeight = document.documentElement.scrollHeight;
-    
-    if (scrollTop > 300) scrollToTop.classList.add('visible');
-    else scrollToTop.classList.remove('visible');
-    
-    if (scrollTop + windowHeight >= documentHeight - 100) scrollToBottom.style.display = 'none';
-    else scrollToBottom.style.display = 'flex';
-}
+function scrollToTopFn()    { window.scrollTo({ top:0, behavior:'smooth' }); }
+function scrollToBottomFn() { window.scrollTo({ top:document.documentElement.scrollHeight, behavior:'smooth' }); }
 
-function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function scrollToBottom() {
-    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-}
-
-function debounce(func, wait) {
-    let timeout;
-    return function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func(...args), wait);
-    };
-}
-
-console.log('✅ Sistema Admin 100% funcional carregado!');
+console.log('✅ WD Manutenções Admin — carregado com sucesso');

@@ -3,134 +3,156 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f59e0b">
+  <meta name="theme-color" content="#FFD700">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="assets/logo.svg">
-  <title>Sistema de Ponto - WD Manutenções</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="apple-touch-icon" href="/assets/logo.svg">
+  <title>Ponto — WD Manutenções</title>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-    <div class="screen">
-        <div class="container">
-            <!-- Header do Sistema -->
-            <div class="system-header">
-                <div class="header-brand">
-                    <img src="assets/logo.svg" alt="WD Manutenções" class="header-logo">
-                    <div class="header-text">
-                        <h1><span>WD</span> MANUTENÇÕES</h1>
-                        <p>Sistema de Controle de Ponto</p>
-                    </div>
-                </div>
-                <div class="header-actions">
-                    <div class="user-info">
-                        <strong id="userName">Carregando...</strong>
-                        <small id="userEmail"></small>
-                    </div>
-                    <button onclick="logout()" class="btn-logout">SAIR</button>
-                </div>
-            </div>
+<div class="screen">
+  <div class="container">
 
-            <!-- Clock -->
-            <div class="clock-card">
-                <div class="date-display">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
-                    </svg>
-                    <span id="currentDate"></span>
-                </div>
-                <div id="currentTime" class="time-large">00:00:00</div>
-            </div>
-
-            <!-- Botão de Registro -->
-            <div class="register-section">
-                <button onclick="openRegisterModal()" class="btn-register-main">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M12 6v6l4 2"></path>
-                    </svg>
-                    <span>REGISTRAR PONTO</span>
-                </button>
-            </div>
-
-            <!-- Meus Registros -->
-            <div class="records-card">
-                <h2>MEUS REGISTROS DE HOJE</h2>
-                <div id="recordsList" class="records-list">
-                    <p class="empty-state">Carregando seus registros...</p>
-                </div>
-            </div>
+    <!-- HEADER -->
+    <header class="system-header">
+      <div class="header-brand">
+        <img src="/assets/logo.svg" alt="WD Manutenções" class="header-logo">
+        <div class="header-text">
+          <h1><span>WD</span> Manutenções</h1>
+          <p>Controle de Ponto</p>
         </div>
+      </div>
+      <div class="header-actions">
+        <div id="connectionStatus" class="connection-status online">
+          <div class="status-dot"></div>
+          <span>Online</span>
+        </div>
+        <div class="user-info">
+          <strong id="userName">—</strong>
+          <small  id="userEmail">—</small>
+        </div>
+        <button class="btn-logout" onclick="logout()">Sair</button>
+      </div>
+    </header>
+
+    <!-- RELÓGIO -->
+    <div class="clock-card">
+      <div class="date-display">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span id="currentDate"></span>
+      </div>
+      <div id="currentTime" class="time-large">00:00:00</div>
     </div>
 
-    <!-- Modal de Registro -->
-    <div id="registerModal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Registrar Ponto</h2>
-                <button onclick="closeRegisterModal()" class="btn-close">&times;</button>
-            </div>
-            
-            <div class="modal-body">
-                <!-- Tipo de Registro -->
-                <div class="form-group">
-                    <label>Tipo de Registro</label>
-                    <select id="recordType" class="form-control">
-                        <option value="entrada">🟢 Entrada</option>
-                        <option value="saida_almoco">🟡 Saída para Almoço</option>
-                        <option value="retorno_almoco">🔵 Retorno do Almoço</option>
-                        <option value="saida">🔴 Saída</option>
-                    </select>
-                </div>
+    <!-- BOTÃO PRINCIPAL -->
+    <button onclick="openRegisterModal()" class="btn-register-main">
+      <div class="register-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </div>
+      <span>REGISTRAR PONTO</span>
+    </button>
 
-                <!-- Preview da Câmera -->
-                <div class="camera-section">
-                    <video id="video" autoplay playsinline></video>
-                    <canvas id="canvas" style="display: none;"></canvas>
-                    <div id="photoPreview" class="photo-preview hidden">
-                        <img id="capturedPhoto" src="" alt="Foto capturada">
-                    </div>
-                </div>
+    <!-- REGISTROS DO DIA -->
+    <div class="records-card">
+      <h2>REGISTROS DE <span>HOJE</span></h2>
 
-                <!-- Botões de Câmera -->
-                <div class="camera-controls">
-                    <button onclick="capturePhoto()" id="btnCapture" class="btn btn-secondary">
-                        📷 Capturar Foto
-                    </button>
-                    <button onclick="retakePhoto()" id="btnRetake" class="btn btn-secondary hidden">
-                        🔄 Tirar Outra Foto
-                    </button>
-                </div>
-
-                <!-- Informações de Localização -->
-                <div id="locationInfo" class="location-info">
-                    <p>📍 Buscando sua localização...</p>
-                </div>
-
-                <!-- Botão de Confirmar -->
-                <button onclick="confirmRegister()" id="btnConfirm" class="btn btn-primary btn-large" disabled>
-                    ✓ CONFIRMAR REGISTRO
-                </button>
-            </div>
+      <!-- Resumo rápido -->
+      <div class="records-summary">
+        <div class="summary-item entrada">
+          <div class="s-dot"></div>
+          <span class="s-val" id="sumEntrada">—</span>
+          <span class="s-label">Entrada</span>
         </div>
+        <div class="summary-item s-almoco">
+          <div class="s-dot"></div>
+          <span class="s-val" id="sumSaidaAlmoco">—</span>
+          <span class="s-label">S. Almoço</span>
+        </div>
+        <div class="summary-item r-almoco">
+          <div class="s-dot"></div>
+          <span class="s-val" id="sumRetorno">—</span>
+          <span class="s-label">Retorno</span>
+        </div>
+        <div class="summary-item saida">
+          <div class="s-dot"></div>
+          <span class="s-val" id="sumSaida">—</span>
+          <span class="s-label">Saída</span>
+        </div>
+      </div>
+
+      <div id="recordsList" class="records-list">
+        <p class="empty-state">Nenhum registro hoje. Clique acima para registrar!</p>
+      </div>
     </div>
 
-    <!-- Botões de Scroll -->
-    <button class="scroll-to-top" id="scrollToTop" onclick="scrollToTop()" title="Voltar ao topo">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <polyline points="18 15 12 9 6 15"></polyline>
-        </svg>
-    </button>
+  </div>
+</div>
 
-    <button class="scroll-to-bottom" id="scrollToBottom" onclick="scrollToBottom()" title="Ir para baixo">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-    </button>
+<!-- ====== MODAL REGISTRO ====== -->
+<div id="registerModal" class="modal hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>Registrar Ponto</h2>
+      <button class="btn-close" onclick="closeRegisterModal()">×</button>
+    </div>
+    <div class="modal-body">
 
-    <script src="js/pwa.js"></script>
-    <script src="js/app.js"></script>
+      <div class="form-group">
+        <label>Tipo de Registro</label>
+        <select id="recordType" class="form-control">
+          <option value="entrada">🟢 Entrada</option>
+          <option value="saida_almoco">🟡 Saída para Almoço</option>
+          <option value="retorno_almoco">🔵 Retorno do Almoço</option>
+          <option value="saida">🔴 Saída</option>
+        </select>
+      </div>
+
+      <div class="camera-section">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas" style="display:none"></canvas>
+        <div id="photoPreview" class="photo-preview hidden">
+          <img id="capturedPhoto" src="" alt="Foto capturada">
+        </div>
+      </div>
+
+      <div class="camera-controls">
+        <button id="btnCapture" onclick="capturePhoto()" class="btn btn-secondary">📷 Capturar</button>
+        <button id="btnRetake"  onclick="retakePhoto()"  class="btn btn-secondary hidden">🔄 Repetir</button>
+      </div>
+
+      <div id="locationInfo" class="location-info">
+        <p>📍 Aguardando localização...</p>
+      </div>
+
+      <button id="btnConfirm" onclick="confirmRegister()" class="btn btn-primary btn-large" disabled>
+        ✓ CONFIRMAR REGISTRO
+      </button>
+
+    </div>
+  </div>
+</div>
+
+<!-- SCROLL BUTTONS -->
+<button class="scroll-to-top" id="scrollToTop" onclick="scrollToTopFn()">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <polyline points="18 15 12 9 6 15"/>
+  </svg>
+</button>
+<button class="scroll-to-bottom" id="scrollToBottom" onclick="scrollToBottomFn()">
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+    <polyline points="6 9 12 15 18 9"/>
+  </svg>
+</button>
+
+<script src="/js/pwa.js"></script>
+<script src="/js/app.js"></script>
 </body>
 </html>

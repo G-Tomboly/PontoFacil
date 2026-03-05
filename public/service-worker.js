@@ -1,11 +1,10 @@
-// ==========================================
-// WD MANUTENÇÕES - SERVICE WORKER v4
-// Suporte completo a offline + sync automático
-// ==========================================
+/* ==================================================
+   service-worker.js — WD Manutenções v5
+   ================================================== */
 
-const STATIC_CACHE = 'ponto-wd-static-v4';
-const API_CACHE = 'ponto-wd-api-v2';
-const OFFLINE_SYNC_TAG = 'sync-records';
+const STATIC_CACHE   = 'wd-static-v5';
+const API_CACHE      = 'wd-api-v3';
+const SYNC_TAG       = 'wd-sync-records';
 
 const APP_SHELL = [
   '/',
@@ -13,228 +12,202 @@ const APP_SHELL = [
   '/index.html',
   '/admin.html',
   '/css/style.css',
+  '/js/pwa.js',
   '/js/login.js',
   '/js/app.js',
   '/js/admin.js',
-  '/js/pwa.js',
-  '/assets/logo.svg',
   '/assets/logo.svg',
   '/manifest.webmanifest'
 ];
 
-// ==================== INSTALL ====================
-self.addEventListener('install', (event) => {
-  event.waitUntil(
+/* ===== INSTALL ===== */
+self.addEventListener('install', e => {
+  e.waitUntil(
     caches.open(STATIC_CACHE)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then(c => c.addAll(APP_SHELL))
       .then(() => self.skipWaiting())
+      .catch(err => console.error('[SW] Install failed:', err))
   );
 });
 
-// ==================== ACTIVATE ====================
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
+/* ===== ACTIVATE ===== */
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(
         keys
-          .filter((key) => key !== STATIC_CACHE && key !== API_CACHE)
-          .map((key) => caches.delete(key))
-      )
-    ).then(() => self.clients.claim())
+          .filter(k => k !== STATIC_CACHE && k !== API_CACHE)
+          .map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// ==================== FETCH ====================
-self.addEventListener('fetch', (event) => {
-  const { request } = event;
+/* ===== FETCH ===== */
+self.addEventListener('fetch', e => {
+  const { request } = e;
   const url = new URL(request.url);
 
-  // Ignora requisições de outras origens (ex: nominatim)
+  // Ignora outras origens (Nominatim, Google Maps, etc.)
   if (url.origin !== self.location.origin) return;
 
-  // POST /api/record — registra ponto (online ou offline)
+  // POST /api/record → offline-first
   if (url.pathname === '/api/record' && request.method === 'POST') {
-    event.respondWith(handleRecordPost(request));
+    e.respondWith(handleRecordPost(request));
     return;
   }
 
-  // GET de APIs — Network first, fallback para cache
+  // GET /api/* → network-first, fallback cache
   if (url.pathname.startsWith('/api/') && request.method === 'GET') {
-    event.respondWith(networkFirstWithCache(request, API_CACHE));
+    e.respondWith(networkFirst(request, API_CACHE));
     return;
   }
 
-  // Assets estáticos — Cache first, fallback para network
+  // Assets estáticos → cache-first
   if (request.method === 'GET') {
-    event.respondWith(cacheFirstWithNetwork(request));
+    e.respondWith(cacheFirst(request));
     return;
   }
 });
 
-// ==================== BACKGROUND SYNC ====================
-self.addEventListener('sync', (event) => {
-  if (event.tag === OFFLINE_SYNC_TAG) {
-    event.waitUntil(syncPendingRecords());
-  }
+/* ===== BACKGROUND SYNC ===== */
+self.addEventListener('sync', e => {
+  if (e.tag === SYNC_TAG) e.waitUntil(syncPending());
 });
 
-// ==================== PUSH NOTIFICATIONS ====================
-self.addEventListener('push', (event) => {
-  const data = event.data?.json() || { title: 'WD Manutenções', body: 'Notificação recebida' };
-  event.waitUntil(
+/* ===== PUSH ===== */
+self.addEventListener('push', e => {
+  const data = e.data?.json() || { title: 'WD Manutenções', body: 'Notificação' };
+  e.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: '/assets/logo.svg',
-      badge: '/assets/logo.svg'
+      icon: '/assets/logo.svg'
     })
   );
 });
 
-// ==================== HANDLERS ====================
-
-async function handleRecordPost(request) {
+/* ==================================================
+   HANDLERS
+   ================================================== */
+async function handleRecordPost(req) {
   try {
-    const response = await fetch(request.clone());
-    if (response.ok) return response;
-    throw new Error('Servidor retornou erro');
-  } catch (err) {
-    // Offline: salva no IndexedDB para sync posterior
-    const body = await request.clone().json();
-    await saveRecordToIDB(body);
-
-    // Registra Background Sync se suportado
+    const res = await fetch(req.clone());
+    if (res.ok) return res;
+    throw new Error('Server error ' + res.status);
+  } catch {
+    const body = await req.clone().json();
+    await saveToIDB(body);
     if (self.registration.sync) {
-      await self.registration.sync.register(OFFLINE_SYNC_TAG);
+      await self.registration.sync.register(SYNC_TAG);
     }
-
-    // Retorna resposta fake de sucesso para o app não quebrar
     return new Response(JSON.stringify({
       success: true,
       offline: true,
-      message: 'Registro salvo localmente. Será sincronizado quando houver conexão.'
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+      message: 'Registro salvo offline. Será sincronizado ao reconectar.'
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
 }
 
-async function networkFirstWithCache(request, cacheName) {
+async function networkFirst(req, cacheName) {
   try {
-    const response = await fetch(request);
-    if (response && response.status === 200) {
-      const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+    const res = await fetch(req);
+    if (res && res.status === 200) {
+      const c = await caches.open(cacheName);
+      c.put(req, res.clone());
     }
-    return response;
+    return res;
   } catch {
-    const cached = await caches.match(request);
+    const cached = await caches.match(req);
     return cached || new Response(JSON.stringify({ error: 'Offline', records: [], users: [] }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
+      status: 200, headers: { 'Content-Type': 'application/json' }
     });
   }
 }
 
-async function cacheFirstWithNetwork(request) {
-  const cached = await caches.match(request);
+async function cacheFirst(req) {
+  const cached = await caches.match(req);
   if (cached) return cached;
-
   try {
-    const response = await fetch(request);
-    if (response && response.status === 200) {
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(request, response.clone());
+    const res = await fetch(req);
+    if (res && res.status === 200) {
+      const c = await caches.open(STATIC_CACHE);
+      c.put(req, res.clone());
     }
-    return response;
+    return res;
   } catch {
     return caches.match('/login.html');
   }
 }
 
-// ==================== INDEXEDDB (fila offline) ====================
-
-function openIDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('wd-offline-db', 1);
-    req.onupgradeneeded = (e) => {
+/* ==================================================
+   INDEXEDDB — fila offline
+   ================================================== */
+function openDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('wd-offline-v2', 1);
+    r.onupgradeneeded = e => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains('pending-records')) {
-        db.createObjectStore('pending-records', { keyPath: 'offlineId' });
+      if (!db.objectStoreNames.contains('queue')) {
+        db.createObjectStore('queue', { keyPath: 'offlineId' });
       }
     };
-    req.onsuccess = (e) => resolve(e.target.result);
-    req.onerror = () => reject(req.error);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror   = () => rej(r.error);
   });
 }
 
-async function saveRecordToIDB(recordData) {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('pending-records', 'readwrite');
-    tx.objectStore('pending-records').put({
-      ...recordData,
-      offlineId: `offline-sw-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      savedAt: Date.now()
+async function saveToIDB(data) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').put({
+      ...data,
+      offlineId: `sw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      savedAt:   Date.now()
     });
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = res;
+    tx.onerror    = () => rej(tx.error);
   });
 }
 
-async function getAllPendingFromIDB() {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('pending-records', 'readonly');
-    const req = tx.objectStore('pending-records').getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+async function getAllFromIDB() {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx  = db.transaction('queue', 'readonly');
+    const req = tx.objectStore('queue').getAll();
+    req.onsuccess = () => res(req.result);
+    req.onerror   = () => rej(req.error);
   });
 }
 
-async function deleteFromIDB(offlineId) {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('pending-records', 'readwrite');
-    tx.objectStore('pending-records').delete(offlineId);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
+async function deleteFromIDB(id) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').delete(id);
+    tx.oncomplete = res;
+    tx.onerror    = () => rej(tx.error);
   });
 }
 
-async function syncPendingRecords() {
-  let pending = [];
-  try {
-    pending = await getAllPendingFromIDB();
-  } catch {
-    return; // IDB não disponível
-  }
-
+async function syncPending() {
+  const pending = await getAllFromIDB().catch(() => []);
   if (!pending.length) return;
 
   let synced = 0;
-  for (const record of pending) {
+  for (const rec of pending) {
     try {
-      const response = await fetch('/api/record', {
-        method: 'POST',
+      const res = await fetch('/api/record', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(record)
+        body:    JSON.stringify(rec)
       });
-
-      if (response.ok) {
-        await deleteFromIDB(record.offlineId);
-        synced++;
-      }
-    } catch {
-      // Ainda offline, tenta no próximo sync
-    }
+      if (res.ok) { await deleteFromIDB(rec.offlineId); synced++; }
+    } catch { /* será tentado novamente */ }
   }
 
   if (synced > 0) {
-    // Notifica todas as abas abertas
     const clients = await self.clients.matchAll({ type: 'window' });
-    clients.forEach((client) =>
-      client.postMessage({ type: 'SYNC_COMPLETE', synced })
-    );
+    clients.forEach(c => c.postMessage({ type: 'SYNC_COMPLETE', synced }));
   }
 }

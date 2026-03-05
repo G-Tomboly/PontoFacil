@@ -3,353 +3,280 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#f59e0b">
+  <meta name="theme-color" content="#FFD700">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="assets/logo.svg">
-  <title>Admin - WD Manutenções</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="apple-touch-icon" href="/assets/logo.svg">
+  <title>Admin — WD Manutenções</title>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="login-page">
-    <!-- Tela de Login Admin -->
-    <div id="adminLoginScreen" class="screen">
-        <div class="login-wrapper">
-            <div class="brand-header">
-                <img src="assets/logo.svg" alt="WD Manutenções" class="brand-logo">
-                <h1 class="brand-name">WD MANUTENÇÕES</h1>
-                <p class="brand-tagline">Painel Administrativo</p>
-            </div>
 
-            <div class="auth-container">
-                <div class="auth-form active">
-                    <h2>Acesso Restrito</h2>
-                    <p class="form-subtitle">Apenas administradores</p>
+  <!-- ====== TELA DE LOGIN ADMIN ====== -->
+  <div id="adminLoginScreen" class="screen">
+    <div class="login-wrapper">
+      <div class="brand-header">
+        <img src="/assets/logo.svg" alt="WD Manutenções" class="brand-logo">
+        <h1 class="brand-name">WD Manutenções</h1>
+        <p class="brand-tagline">Painel Administrativo</p>
+      </div>
 
-                    <div class="form-group">
-                        <label for="adminEmail">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                <polyline points="22,6 12,13 2,6"></polyline>
-                            </svg>
-                            Email Administrativo
-                        </label>
-                        <input 
-                            type="email" 
-                            id="adminEmail" 
-                            placeholder="admin@wdmanutencoes.com"
-                            autocomplete="email"
-                        >
-                    </div>
+      <div class="auth-container">
+        <div class="auth-form active">
+          <h2>Acesso Restrito</h2>
+          <p class="form-subtitle">Apenas administradores autorizados</p>
 
-                    <div class="form-group">
-                        <label for="adminPassword">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-                            </svg>
-                            Senha
-                        </label>
-                        <input 
-                            type="password" 
-                            id="adminPassword" 
-                            placeholder="••••••••"
-                        >
-                    </div>
+          <div class="form-group">
+            <label for="adminEmail">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Email Administrativo
+            </label>
+            <input type="email" id="adminEmail" placeholder="admin@wdmanutencoes.com" autocomplete="email">
+          </div>
 
-                    <button onclick="adminLogin()" class="btn btn-primary btn-large">
-                        Entrar no Painel
-                    </button>
+          <div class="form-group">
+            <label for="adminPassword">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Senha
+            </label>
+            <input type="password" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
+          </div>
 
-                    <div class="admin-link">
-                        <a href="login.html">← Voltar ao login</a>
-                    </div>
-                </div>
-            </div>
+          <button onclick="adminLogin()" class="btn btn-primary btn-large">
+            Entrar no Painel
+          </button>
+
+          <div class="admin-link">
+            <a href="/login.html">← Voltar ao login</a>
+          </div>
         </div>
+      </div>
     </div>
+  </div>
 
-    <!-- Painel Admin -->
-    <div id="adminPanel" class="screen hidden">
-        <div class="admin-container">
-            <!-- Header Admin -->
-            <div class="admin-header">
-                <div class="header-brand">
-                    <img src="assets/logo.svg" alt="WD Manutenções" class="header-logo">
-                    <div>
-                        <h1><span>WD</span> PAINEL ADMIN</h1>
-                        <p id="adminName">Administrador</p>
-                    </div>
-                </div>
-                <button onclick="adminLogout()" class="btn-logout">SAIR</button>
-            </div>
+  <!-- ====== PAINEL ADMIN ====== -->
+  <div id="adminPanel" class="screen hidden">
+    <div class="screen::before"></div>
+    <div class="admin-container">
 
-            <!-- Abas de Navegação -->
-            <div class="admin-tabs" style="pointer-events: auto;">
-                <button class="admin-tab active" data-tab="dashboard" style="pointer-events: auto;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events: none;">
-                        <rect x="3" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="3" width="7" height="7"></rect>
-                        <rect x="14" y="14" width="7" height="7"></rect>
-                        <rect x="3" y="14" width="7" height="7"></rect>
-                    </svg>
-                    <span style="pointer-events: none;">Dashboard</span>
-                </button>
-                <button class="admin-tab" data-tab="employees" style="pointer-events: auto;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events: none;">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                        <circle cx="9" cy="7" r="4"></circle>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                    </svg>
-                    <span style="pointer-events: none;">Colaboradores</span>
-                </button>
-                <button class="admin-tab" data-tab="records" style="pointer-events: auto;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events: none;">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                    <span style="pointer-events: none;">Registros</span>
-                </button>
-                <button class="admin-tab" data-tab="reports" style="pointer-events: auto;">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="pointer-events: none;">
-                        <line x1="18" y1="20" x2="18" y2="10"></line>
-                        <line x1="12" y1="20" x2="12" y2="4"></line>
-                        <line x1="6" y1="20" x2="6" y2="14"></line>
-                    </svg>
-                    <span style="pointer-events: none;">Relatórios</span>
-                </button>
-            </div>
-
-            <!-- ABA: Dashboard -->
-            <div id="tabDashboard" class="admin-tab-content active">
-                <!-- Estatísticas -->
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="9" cy="7" r="4"></circle>
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-                                <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                            </svg>
-                        </div>
-                        <div class="stat-info">
-                            <h3 id="statTotalEmployees">0</h3>
-                            <p>Colaboradores Ativos</p>
-                        </div>
-                    </div>
-
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                                <circle cx="12" cy="12" r="10"></circle>
-                                <polyline points="12 6 12 12 16 14"></polyline>
-                            </svg>
-                        </div>
-                        <div class="stat-info">
-                            <h3 id="statTodayRecords">0</h3>
-                            <p>Registros Hoje</p>
-                        </div>
-                    </div>
-
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                                <circle cx="8.5" cy="7" r="4"></circle>
-                                <polyline points="17 11 19 13 23 9"></polyline>
-                            </svg>
-                        </div>
-                        <div class="stat-info">
-                            <h3 id="statTotalRecords">0</h3>
-                            <p>Total de Registros</p>
-                        </div>
-                    </div>
-
-                    <div class="stat-card">
-                        <div class="stat-icon">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                                <path d="M12 2v20M2 12h20"></path>
-                            </svg>
-                        </div>
-                        <div class="stat-info">
-                            <h3 id="statAvgRecordsPerDay">0</h3>
-                            <p>Média de Registros/Dia</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Atividade Recente -->
-                <div class="activity-card">
-                    <h2>🕐 Atividade Recente</h2>
-                    <div id="recentActivity" class="activity-list">
-                        <p class="empty-state">Carregando atividades...</p>
-                    </div>
-                </div>
-
-                <div class="activity-card" style="margin-top:20px;">
-                    <h2>⚙️ Administração</h2>
-                    <p style="margin-bottom: 15px; color: rgba(255,255,255,0.7);">Use com cuidado: essas ações impactam todos os colaboradores.</p>
-                    <div style="display:flex;flex-wrap:wrap;gap:10px;">
-                        <button onclick="clearAllRecords()" class="btn btn-secondary" style="background:#dc2626;color:#fff;">🗑️ Limpar Todos os Registros</button>
-                        <button onclick="loadEmployees()" class="btn btn-secondary">🔄 Atualizar Contas</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ABA: Colaboradores -->
-            <div id="tabEmployees" class="admin-tab-content">
-                <div class="employees-card">
-                    <div class="card-header">
-                        <h2>👥 Colaboradores</h2>
-                        <div class="header-actions">
-                            <input 
-                                type="text" 
-                                id="searchEmployee" 
-                                placeholder="🔍 Buscar colaborador..." 
-                                class="search-input"
-                                onkeyup="filterEmployees()"
-                            >
-                        </div>
-                    </div>
-                    <div id="employeesList" class="employees-list">
-                        <p class="empty-state">Carregando colaboradores...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ABA: Registros -->
-            <div id="tabRecords" class="admin-tab-content">
-                <!-- Filtros -->
-                <div class="filters-card">
-                    <h2>🔍 Filtrar Registros</h2>
-                    <div class="filters-grid">
-                        <div class="form-group">
-                            <label>Data Inicial</label>
-                            <input type="date" id="filterStartDate" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label>Data Final</label>
-                            <input type="date" id="filterEndDate" class="form-control">
-                        </div>
-                        <div class="form-group">
-                            <label>Colaborador</label>
-                            <select id="filterUser" class="form-control">
-                                <option value="">Todos os Colaboradores</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Tipo de Registro</label>
-                            <select id="filterType" class="form-control">
-                                <option value="">Todos os Tipos</option>
-                                <option value="entrada">Entrada</option>
-                                <option value="saida_almoco">Saída Almoço</option>
-                                <option value="retorno_almoco">Retorno Almoço</option>
-                                <option value="saida">Saída</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="filter-actions">
-                        <button onclick="applyFilters()" class="btn btn-primary">
-                            🔍 APLICAR FILTROS
-                        </button>
-                        <button onclick="clearFilters()" class="btn btn-secondary">
-                            🔄 LIMPAR FILTROS
-                        </button>
-                        <button onclick="exportRecords()" class="btn btn-secondary">
-                            📥 EXPORTAR CSV
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Lista de Registros -->
-                <div class="admin-records-card">
-                    <div class="records-header">
-                        <h2>📋 Registros de Ponto</h2>
-                        <span id="recordsCount" class="records-count">0 registros</span>
-                    </div>
-                    <div id="adminRecordsList" class="admin-records-list">
-                        <p class="empty-state">Carregando registros...</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ABA: Relatórios -->
-            <div id="tabReports" class="admin-tab-content">
-                <div class="reports-card">
-                    <h2>📊 Relatórios</h2>
-                    
-                    <div class="reports-grid">
-                        <div class="report-item" onclick="generateDailyReport()">
-                            <div class="report-icon">📅</div>
-                            <h3>Relatório Diário</h3>
-                            <p>Resumo dos registros do dia</p>
-                        </div>
-
-                        <div class="report-item" onclick="generateWeeklyReport()">
-                            <div class="report-icon">📆</div>
-                            <h3>Relatório Semanal</h3>
-                            <p>Resumo da semana</p>
-                        </div>
-
-                        <div class="report-item" onclick="generateMonthlyReport()">
-                            <div class="report-icon">📋</div>
-                            <h3>Espelho de Ponto</h3>
-                            <p>Relatório mensal obrigatório (CLT)</p>
-                        </div>
-
-                        <div class="report-item" onclick="generateEmployeeReport()">
-                            <div class="report-icon">👤</div>
-                            <h3>Por Colaborador</h3>
-                            <p>Detalhes individuais</p>
-                        </div>
-                    </div>
-
-                    <div id="reportResult" class="report-result"></div>
-                </div>
-            </div>
+      <!-- HEADER ADMIN -->
+      <header class="admin-header">
+        <div class="header-brand">
+          <img src="/assets/logo.svg" alt="WD" class="header-logo">
+          <div>
+            <h1><span>WD</span> Painel Admin</h1>
+            <p id="adminName">Administrador</p>
+          </div>
         </div>
-    </div>
+        <button onclick="adminLogout()" class="btn-logout">Sair</button>
+      </header>
 
-    <!-- Modal de Detalhes do Registro -->
-    <div id="detailsModal" class="modal hidden">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>📋 Detalhes do Registro</h2>
-                <button onclick="closeDetailsModal()" class="btn-close">&times;</button>
+      <!-- ABAS -->
+      <nav class="admin-tabs">
+        <button class="admin-tab active" data-tab="dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span>Dashboard</span>
+        </button>
+        <button class="admin-tab" data-tab="employees">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Colaboradores</span>
+        </button>
+        <button class="admin-tab" data-tab="records">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span>Registros</span>
+        </button>
+        <button class="admin-tab" data-tab="reports">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Relatórios</span>
+        </button>
+      </nav>
+
+      <!-- ABA DASHBOARD -->
+      <div id="tabDashboard" class="admin-tab-content active">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </div>
-            <div class="modal-body">
-                <div id="recordDetails"></div>
+            <div class="stat-info">
+              <h3 id="statTotalEmployees">0</h3>
+              <p>Colaboradores Ativos</p>
             </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div class="stat-info">
+              <h3 id="statTodayRecords">0</h3>
+              <p>Registros Hoje</p>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+            </div>
+            <div class="stat-info">
+              <h3 id="statTotalRecords">0</h3>
+              <p>Total de Registros</p>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div class="stat-info">
+              <h3 id="statAvgRecordsPerDay">0</h3>
+              <p>Média Registros/Dia</p>
+            </div>
+          </div>
         </div>
-    </div>
 
-    <!-- Modal de Detalhes do Colaborador -->
-    <div id="employeeModal" class="modal hidden">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>👤 Detalhes do Colaborador</h2>
-                <button onclick="closeEmployeeModal()" class="btn-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="employeeDetails"></div>
-            </div>
+        <div class="activity-card">
+          <h2>🕐 Atividade Recente</h2>
+          <div id="recentActivity" class="activity-list">
+            <p class="empty-state">Carregando atividades...</p>
+          </div>
         </div>
+
+        <div class="activity-card">
+          <h2>⚙️ Administração</h2>
+          <p style="margin-bottom:16px;color:var(--text-muted);font-size:14px">Ações que afetam todos os colaboradores. Use com cautela.</p>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <button onclick="clearAllRecords()" class="btn btn-danger">🗑️ Limpar Todos os Registros</button>
+            <button onclick="loadDashboard()" class="btn btn-secondary">🔄 Atualizar Dashboard</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA COLABORADORES -->
+      <div id="tabEmployees" class="admin-tab-content">
+        <div class="employees-card">
+          <div class="card-header">
+            <h2>👥 Colaboradores</h2>
+            <input type="text" id="searchEmployee" class="search-input" placeholder="🔍 Buscar colaborador...">
+          </div>
+          <div id="employeesList" class="employees-list">
+            <p class="empty-state">Carregando colaboradores...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA REGISTROS -->
+      <div id="tabRecords" class="admin-tab-content">
+        <div class="filters-card">
+          <h2>🔍 Filtrar Registros</h2>
+          <div class="filters-grid">
+            <div class="form-group">
+              <label>Data Inicial</label>
+              <input type="date" id="filterStartDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Data Final</label>
+              <input type="date" id="filterEndDate" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>Colaborador</label>
+              <select id="filterUser" class="form-control">
+                <option value="">Todos os Colaboradores</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Tipo de Registro</label>
+              <select id="filterType" class="form-control">
+                <option value="">Todos os Tipos</option>
+                <option value="entrada">Entrada</option>
+                <option value="saida_almoco">Saída Almoço</option>
+                <option value="retorno_almoco">Retorno Almoço</option>
+                <option value="saida">Saída</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button onclick="applyFilters()"  class="btn btn-primary">🔍 Aplicar Filtros</button>
+            <button onclick="clearFilters()"  class="btn btn-secondary">🔄 Limpar</button>
+            <button onclick="exportRecords()" class="btn btn-secondary">📥 Exportar CSV</button>
+          </div>
+        </div>
+
+        <div class="admin-records-card">
+          <div class="records-header">
+            <h2>📋 Registros de Ponto</h2>
+            <span id="recordsCount" class="records-count">0 registros</span>
+          </div>
+          <div id="adminRecordsList" class="admin-records-list">
+            <p class="empty-state">Carregando registros...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABA RELATÓRIOS -->
+      <div id="tabReports" class="admin-tab-content">
+        <div class="reports-card">
+          <h2>📊 Relatórios</h2>
+          <div class="reports-grid">
+            <div class="report-item" onclick="generateDailyReport()">
+              <div class="report-icon">📅</div>
+              <h3>Relatório Diário</h3>
+              <p>Resumo completo dos registros do dia atual</p>
+            </div>
+            <div class="report-item" onclick="generateWeeklyReport()">
+              <div class="report-icon">📆</div>
+              <h3>Relatório Semanal</h3>
+              <p>Resumo dos últimos 7 dias</p>
+            </div>
+            <div class="report-item" onclick="generateMonthlyReport()">
+              <div class="report-icon">📋</div>
+              <h3>Espelho de Ponto</h3>
+              <p>Relatório mensal obrigatório CLT com adicionais</p>
+            </div>
+            <div class="report-item" onclick="generateEmployeeReport()">
+              <div class="report-icon">👤</div>
+              <h3>Por Colaborador</h3>
+              <p>Detalhes individuais de cada funcionário</p>
+            </div>
+          </div>
+          <div id="reportResult" class="report-result"></div>
+        </div>
+      </div>
+
+    </div><!-- /admin-container -->
+  </div><!-- /adminPanel -->
+
+  <!-- MODAL DETALHES DO REGISTRO -->
+  <div id="detailsModal" class="modal hidden">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2>📋 Detalhes do Registro</h2>
+        <button class="btn-close" onclick="closeDetailsModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="recordDetails"></div>
+      </div>
     </div>
+  </div>
 
-    <!-- Botões de Scroll -->
-    <button class="scroll-to-top" id="scrollToTop" onclick="scrollToTop()" title="Voltar ao topo">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <polyline points="18 15 12 9 6 15"></polyline>
-        </svg>
-    </button>
+  <!-- MODAL DETALHES DO COLABORADOR -->
+  <div id="employeeModal" class="modal hidden">
+    <div class="modal-content modal-large">
+      <div class="modal-header">
+        <h2>👤 Detalhes do Colaborador</h2>
+        <button class="btn-close" onclick="closeEmployeeModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="employeeDetails"></div>
+      </div>
+    </div>
+  </div>
 
-    <button class="scroll-to-bottom" id="scrollToBottom" onclick="scrollToBottom()" title="Ir para baixo">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-    </button>
+  <!-- SCROLL BUTTONS -->
+  <button class="scroll-to-top" id="scrollToTop" onclick="scrollToTopFn()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="18 15 12 9 6 15"/></svg>
+  </button>
+  <button class="scroll-to-bottom" id="scrollToBottom" onclick="scrollToBottomFn()">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="6 9 12 15 18 9"/></svg>
+  </button>
 
-    <script src="js/pwa.js"></script>
-    <script src="js/admin.js"></script>
+  <script src="/js/pwa.js"></script>
+  <script src="/js/admin.js"></script>
 </body>
 </html>
