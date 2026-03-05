@@ -1,0 +1,195 @@
+[33mcommit 85efde5efbcf742e52deeb8894daf3cf8bd63be4[m[33m ([m[1;36mHEAD -> [m[1;32mprincipal[m[33m, [m[1;31morigin/principal[m[33m)[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Thu Mar 5 14:38:57 2026 -0300
+
+    Replacing files...
+
+[33mcommit 4ef8e3ea5bf74676922fead06cb39d6c150bef2b[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 22:14:52 2026 -0300
+
+    nome2
+
+[33mcommit c3845f70e2cce1e693f58b1b80638cb9fb37bada[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 22:12:37 2026 -0300
+
+    nome1
+
+[33mcommit 56c75c66f88dfa553167bd737407c3c8f7fe28a0[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 22:07:47 2026 -0300
+
+    v2.1
+
+[33mcommit d593e852a86310a7807136d6a132b98e19ec67fe[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 22:07:22 2026 -0300
+
+    v2
+
+[33mcommit 311fc2b3855e711f48453361e72f9515ba2b6698[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 21:56:33 2026 -0300
+
+    offline things
+
+[33mcommit 3fe3f2efbd4d75d44f51affd50e1d6cd7e21403d[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 21:30:04 2026 -0300
+
+    logo bug fixed
+
+[33mcommit 612271096f6433c883970f395cd22b1cd1cd382c[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 21:05:09 2026 -0300
+
+    logo apagada
+
+[33mcommit 6a7a1da6a6b7f9da0c7bdbbfa271c55a96a4a4f9[m[33m ([m[1;31morigin/main[m[33m, [m[1;32mmain[m[33m)[m
+Merge: 7f080ca 5bc9c0b
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 14:43:39 2026 -0300
+
+    ultimo commit
+
+[33mcommit 7f080ca21488247dda4ec3f628d235dd52d4180b[m[33m ([m[1;31morigin/master[m[33m)[m
+Author: G-Tomboly <tomboly.academico@gmail.com>
+Date:   Sun Mar 1 14:37:46 2026 -0300
+
+    logo
+
+[33mcommit 5bc9c0be8f1056293622429d4888a92bbc9a1168[m
+Merge: 76ca0cb 965c7fe
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:50:18 2026 -0300
+
+    Merge pull request #4 from G-Tomboly/codex/transformar-codigo-em-aplicativo-8o9yy5
+    
+    PWA/offline support, admin management and server admin endpoints; offline queuing & sync
+
+[33mcommit 965c7fea9a0803a541eb694609568cc55d124c52[m
+Merge: a5c3a97 76ca0cb
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:49:00 2026 -0300
+
+    Merge branch 'main' into codex/transformar-codigo-em-aplicativo-8o9yy5
+
+[33mcommit a5c3a9720ccc067c1a2bacd59a7303e5ec4d1dd7[m
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:43:51 2026 -0300
+
+    fix: restaura estilo original da logo
+
+[33mcommit 76ca0cb595ad0134a332dd141103580e80e9dd71[m
+Merge: 823195e 379b884
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:30:09 2026 -0300
+
+    Merge pull request #3 from G-Tomboly/codex/transformar-codigo-em-aplicativo-0yw3iq
+    
+    PWA + offline support, admin user management and server endpoints for record/account admin
+
+[33mcommit 379b884c3fa35e892aea0048379343d60e683cd7[m
+Merge: f8d4141 823195e
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:29:57 2026 -0300
+
+    Merge branch 'main' into codex/transformar-codigo-em-aplicativo-0yw3iq
+
+[33mcommit f8d41419d3e626fb2346185617af4a3371c991c7[m
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:23:49 2026 -0300
+
+    feat: restaura logo original e adiciona gestão admin de contas/registros
+
+[33mcommit 823195ea1812dfa9ae2901f946afd55ae5a1fe98[m
+Merge: 53be8c7 23cddf1
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:04:03 2026 -0300
+
+    Merge pull request #2 from G-Tomboly/codex/transformar-codigo-em-aplicativo-3najzm
+    
+    Add PWA support, switch API to relative paths, and add Render deployment guide
+
+[33mcommit 23cddf12c7aaf3402f71bdb631949808fd0ce278[m
+Merge: 912e450 53be8c7
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 23:03:45 2026 -0300
+
+    Merge branch 'main' into codex/transformar-codigo-em-aplicativo-3najzm
+
+[33mcommit 912e4505a5b11028210ab1e413bdc189dad0e61d[m
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 22:54:43 2026 -0300
+
+    feat: ícone com fundo preto no app e offline ampliado
+
+[33mcommit b98cf06549e083cd7a3607d73c35d92ad6195e17[m
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 22:42:24 2026 -0300
+
+    feat: melhorar offline real do ponto e ajustar visual da logo
+
+[33mcommit faf363f1f9bd70cd5de33fa6dad5bd0c4351302b[m
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 22:42:04 2026 -0300
+
+    fix: estabiliza cache do PWA e documenta deploy no Render
+
+[33mcommit 53be8c71f783a85ac7e98a3cf63ca900dd5f313b[m
+Merge: 7c93037 dda3757
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 21:59:24 2026 -0300
+
+    Merge pull request #1 from G-Tomboly/codex/transformar-codigo-em-aplicativo
+    
+    feat: tornar sistema instalável como PWA
+
+[33mcommit dda37576b5b834c9a71eb65f585a261604324eb7[m
+Author: Tomboly <tomboly.academico@gmail.com>
+Date:   Sat Feb 28 21:56:41 2026 -0300
+
+    feat: transformar sistema em app instalável (PWA) com mudanças mínimas
+
+[33mcommit 7c930374b3aeb16890c8beee2e018f1f182769e6[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sun Feb 8 00:28:34 2026 -0300
+
+    logo ajustada
+
+[33mcommit 830b8d08e58638f88bb871b3ea1d9a8d36a962e0[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sun Feb 8 00:21:03 2026 -0300
+
+    Corrigindo URL da API para caminhos relativos
+
+[33mcommit 3f302ebe4938ef2cfb03c8bb422b8461366beac0[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sun Feb 8 00:12:02 2026 -0300
+
+    Ajustando estrutura e ignorando node_modules
+
+[33mcommit eca676a0683b5632df2a19f0e42e770ca07c59c1[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sat Feb 7 23:55:11 2026 -0300
+
+    Corrigindo Bugs para Render
+
+[33mcommit 2bca60d442bf7f43bfe2e7fd60a34050724dd82d[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sat Jan 24 21:48:37 2026 -0300
+
+    Fix porta dinâmica para produção
+
+[33mcommit 619b6c56ce10b413cd650bd63db3b566ee99bcec[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sat Jan 17 13:03:10 2026 -0300
+
+    Força novo deploy na Vercel
+
+[33mcommit 90ccb58dd3a693856d657b9ed75d306b0957f570[m
+Author: Guilherme Tomboly Borges <tomboly.academico@gmail.com>
+Date:   Sat Jan 17 12:40:47 2026 -0300
+
+    Versão Inicial do PontoFacil
