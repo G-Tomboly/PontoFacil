@@ -1,35 +1,46 @@
-/* ==================================================
-   database.js — WD Manutenções
-   ================================================== */
+/* ============================================================
+   database.js — WD Manutenções v3 FINAL
+   ============================================================ */
+'use strict';
 
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt  = require('bcryptjs');
 const path    = require('path');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'timecard.db');
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'timecard.db');
 
 const db = new sqlite3.Database(DB_PATH, err => {
-  if (err) { console.error('❌ DB connect error:', err); process.exit(1); }
-  console.log('✓ SQLite conectado:', DB_PATH);
-  init();
+  if (err) { console.error('❌ DB:', err.message); process.exit(1); }
+  console.log('✓ SQLite:', DB_PATH);
 });
 
-// Habilita WAL para melhor performance concorrente
 db.run('PRAGMA journal_mode=WAL');
-db.run('PRAGMA synchronous=NORMAL');
+db.run('PRAGMA foreign_keys=ON');
 
-function init() {
+/* ─── helpers promise ─── */
+const run = (sql, p=[]) => new Promise((res,rej) =>
+  db.run(sql, p, function(e){ e ? rej(e) : res(this); })
+);
+const get = (sql, p=[]) => new Promise((res,rej) =>
+  db.get(sql, p, (e,r) => e ? rej(e) : res(r))
+);
+const all = (sql, p=[]) => new Promise((res,rej) =>
+  db.all(sql, p, (e,r) => e ? rej(e) : res(r))
+);
+
+/* ─── schema ─── */
+async function init(cb) {
   db.serialize(() => {
     db.run(`
       CREATE TABLE IF NOT EXISTS users (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         name       TEXT    NOT NULL,
-        email      TEXT    UNIQUE NOT NULL,
+        email      TEXT    UNIQUE NOT NULL COLLATE NOCASE,
         password   TEXT    NOT NULL,
-        role       TEXT    NOT NULL DEFAULT 'employee',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+        role       TEXT    NOT NULL DEFAULT 'employee' CHECK(role IN ('admin','employee')),
+        active     INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT    DEFAULT (datetime('now','localtime'))
+      )`);
 
     db.run(`
       CREATE TABLE IF NOT EXISTS records (
@@ -37,161 +48,122 @@ function init() {
         user_id    INTEGER NOT NULL,
         user_name  TEXT    NOT NULL,
         user_email TEXT    NOT NULL DEFAULT '',
-        type       TEXT    NOT NULL,
-        photo      TEXT,
+        type       TEXT    NOT NULL CHECK(type IN ('entrada','saida_almoco','retorno_almoco','saida')),
+        photo_data TEXT,
         latitude   REAL,
         longitude  REAL,
         address    TEXT,
         date       TEXT    NOT NULL,
         time       TEXT    NOT NULL,
-        timestamp  INTEGER NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-      )
-    `, () => {
-      console.log('✓ Tabelas prontas');
-      seedAdmin();
+        ts         INTEGER NOT NULL,
+        created_at TEXT    DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      )`, () => {
+      db.run('CREATE INDEX IF NOT EXISTS idx_rec_user ON records(user_id)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_rec_date ON records(date)');
+      db.run('CREATE INDEX IF NOT EXISTS idx_rec_ts   ON records(ts DESC)', () => {
+        seedAdmin(cb);
+      });
     });
   });
 }
 
-function seedAdmin() {
+function seedAdmin(cb) {
   const email = process.env.ADMIN_EMAIL    || 'admin@wdmanutencoes.com';
   const pass  = process.env.ADMIN_PASSWORD || 'admin123';
-
-  db.get('SELECT id FROM users WHERE email = ?', [email], (err, row) => {
-    if (row) return; // já existe
+  db.get('SELECT id FROM users WHERE email=?', [email], (err, row) => {
+    if (row) return cb && cb();
     const hash = bcrypt.hashSync(pass, 12);
-    db.run(
-      'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+    db.run('INSERT INTO users(name,email,password,role) VALUES(?,?,?,?)',
       ['Administrador WD', email, hash, 'admin'],
-      err2 => {
-        if (!err2) {
-          console.log('');
-          console.log('✓ Admin criado:');
-          console.log('  Email:', email);
-          console.log('  Senha:', pass);
-          if (pass === 'admin123') console.log('  ⚠️  Altere a senha em produção via variável ADMIN_PASSWORD');
-          console.log('');
-        }
+      () => {
+        console.log('\n✓ Admin padrão:  ' + email + '  /  ' + pass);
+        if (pass === 'admin123') console.warn('  ⚠️  Altere ADMIN_PASSWORD em produção!\n');
+        cb && cb();
       }
     );
   });
 }
 
-/* ==================================================
-   API
-   ================================================== */
-const database = {
+/* ─── API ─── */
+const DB = {
+  init,
 
-  registerUser(name, email, password, cb) {
+  /* USERS */
+  registerUser: ({ name, email, password }) => {
     const hash = bcrypt.hashSync(password, 12);
-    db.run(
-      'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-      [name, email, hash, 'employee'],
-      function (err) {
-        if (err) cb(err, null);
-        else     cb(null, { id: this.lastID, name, email, role: 'employee' });
-      }
-    );
+    return run('INSERT INTO users(name,email,password,role) VALUES(?,?,?,?)',
+      [name.trim(), email.trim().toLowerCase(), hash, 'employee'])
+      .then(r => ({ id: r.lastID, name, email: email.trim().toLowerCase(), role: 'employee' }));
   },
 
-  verifyLogin(email, password, cb) {
-    db.get('SELECT * FROM users WHERE email = ?', [email], (err, user) => {
-      if (err)   return cb(err, null);
-      if (!user) return cb(null, null);
-      const ok = bcrypt.compareSync(password, user.password);
-      cb(null, ok ? user : null);
-    });
+  verifyLogin: async (email, password) => {
+    const u = await get('SELECT * FROM users WHERE email=? AND active=1', [email.toLowerCase()]);
+    if (!u || !bcrypt.compareSync(password, u.password)) return null;
+    return u;
   },
 
-  getUserById(id, cb) {
-    db.get('SELECT id, name, email, role FROM users WHERE id = ?', [id], cb);
+  getUserById: id => get('SELECT id,name,email,role FROM users WHERE id=?', [id]),
+
+  getAllUsers: () => all(`
+    SELECT u.id, u.name, u.email, u.role, u.created_at,
+           COUNT(r.id) total_records, MAX(r.ts) last_ts
+    FROM users u
+    LEFT JOIN records r ON r.user_id=u.id
+    WHERE u.active=1
+    GROUP BY u.id ORDER BY u.created_at DESC`),
+
+  deactivateUser: id => run('UPDATE users SET active=0 WHERE id=?', [id]),
+
+  /* RECORDS */
+  insertRecord: d => run(`
+    INSERT INTO records
+      (user_id,user_name,user_email,type,photo_data,latitude,longitude,address,date,time,ts)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+    [ d.user_id, d.user_name, d.user_email||'', d.type,
+      d.photo_data||null, d.latitude||null, d.longitude||null, d.address||null,
+      d.date, d.time, d.ts ]
+  ).then(r => ({ id: r.lastID })),
+
+  /* retorna lista sem photo_data (pesado) */
+  getAllRecords: ({ limit=1000, offset=0 } = {}) => all(`
+    SELECT id,user_id,user_name,user_email,type,
+           latitude,longitude,address,date,time,ts,
+           CASE WHEN photo_data IS NOT NULL THEN 1 ELSE 0 END has_photo
+    FROM records ORDER BY ts DESC LIMIT ? OFFSET ?`, [limit, offset]),
+
+  /* retorna 1 registro COM photo_data */
+  getRecordById: id => get('SELECT * FROM records WHERE id=?', [id]),
+
+  getRecordsByUser: userId => all(`
+    SELECT id,user_id,user_name,user_email,type,
+           latitude,longitude,address,date,time,ts,
+           CASE WHEN photo_data IS NOT NULL THEN 1 ELSE 0 END has_photo
+    FROM records WHERE user_id=? ORDER BY ts DESC`, [userId]),
+
+  deleteRecord: id => run('DELETE FROM records WHERE id=?', [id]),
+
+  updateRecord: (id, { type, date, time }) => {
+    const fields = [], vals = [];
+    if (type) { fields.push('type=?');  vals.push(type); }
+    if (date) { fields.push('date=?');  vals.push(date); }
+    if (time) { fields.push('time=?');  vals.push(time); }
+    if (!fields.length) return Promise.resolve();
+    vals.push(id);
+    return run(`UPDATE records SET ${fields.join(',')} WHERE id=?`, vals);
   },
 
-  insertRecord(data, cb) {
-    const sql = `
-      INSERT INTO records
-        (user_id, user_name, user_email, type, photo, latitude, longitude, address, date, time, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    db.run(sql, [
-      data.user_id,
-      data.user_name,
-      data.user_email || '',
-      data.type,
-      data.photo      || null,
-      data.latitude   || null,
-      data.longitude  || null,
-      data.address    || null,
-      data.date,
-      data.time,
-      data.timestamp
-    ], function (err) {
-      if (err) cb(err);
-      else     cb(null, { lastID: this.lastID });
-    });
-  },
+  clearAllRecords: () => run('DELETE FROM records').then(r => ({ deleted: r.changes })),
 
-  getAllRecords(cb) {
-    db.all('SELECT * FROM records ORDER BY timestamp DESC', [], cb);
+  getStats: async () => {
+    const today = new Date().toLocaleDateString('pt-BR');
+    const [tr, td, te] = await Promise.all([
+      get('SELECT COUNT(*) c FROM records'),
+      get('SELECT COUNT(*) c FROM records WHERE date=?', [today]),
+      get('SELECT COUNT(*) c FROM users WHERE role="employee" AND active=1'),
+    ]);
+    return { total_records: tr.c, today_records: td.c, total_employees: te.c };
   },
-
-  getRecordsByUserId(userId, cb) {
-    db.all('SELECT * FROM records WHERE user_id = ? ORDER BY timestamp DESC', [userId], cb);
-  },
-
-  getRecordsByPeriod(start, end, cb) {
-    db.all(
-      'SELECT * FROM records WHERE date BETWEEN ? AND ? ORDER BY timestamp DESC',
-      [start, end], cb
-    );
-  },
-
-  getAllUsers(cb) {
-    db.all(
-      'SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC',
-      [], cb
-    );
-  },
-
-  getStats(cb) {
-    db.all('SELECT * FROM records ORDER BY timestamp DESC', [], (err, records) => {
-      if (err) return cb(err, null);
-      const today = new Date().toLocaleDateString('pt-BR');
-      db.get('SELECT COUNT(*) AS cnt FROM users WHERE role = "employee"', [], (e2, row) => {
-        cb(null, {
-          total_records:    records.length,
-          today_records:    records.filter(r => r.date === today).length,
-          total_employees:  row?.cnt || 0,
-          all_records:      records
-        });
-      });
-    });
-  },
-
-  deleteUserAndRecords(userId, cb) {
-    db.serialize(() => {
-      db.run('BEGIN TRANSACTION');
-      db.run('DELETE FROM records WHERE user_id = ?', [userId], rErr => {
-        if (rErr) { db.run('ROLLBACK'); return cb(rErr); }
-        db.run('DELETE FROM users WHERE id = ?', [userId], function (uErr) {
-          if (uErr) { db.run('ROLLBACK'); return cb(uErr); }
-          db.run('COMMIT', cErr => {
-            if (cErr) { db.run('ROLLBACK'); return cb(cErr); }
-            cb(null, { deleted: this.changes });
-          });
-        });
-      });
-    });
-  },
-
-  clearAllRecords(cb) {
-    db.run('DELETE FROM records', function (err) {
-      if (err) cb(err);
-      else     cb(null, { deleted: this.changes });
-    });
-  }
 };
 
-module.exports = database;
+module.exports = DB;

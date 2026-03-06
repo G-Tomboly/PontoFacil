@@ -5,278 +5,330 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#FFD700">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="apple-touch-icon" href="/assets/logo.svg">
   <title>Admin — WD Manutenções</title>
   <link rel="stylesheet" href="/css/style.css">
 </head>
-<body class="login-page">
+<body class="page grid-bg">
 
-  <!-- ====== TELA DE LOGIN ADMIN ====== -->
-  <div id="adminLoginScreen" class="screen">
-    <div class="login-wrapper">
-      <div class="brand-header">
-        <img src="/assets/logo.svg" alt="WD Manutenções" class="brand-logo">
-        <h1 class="brand-name">WD Manutenções</h1>
-        <p class="brand-tagline">Painel Administrativo</p>
-      </div>
-
-      <div class="auth-container">
-        <div class="auth-form active">
-          <h2>Acesso Restrito</h2>
-          <p class="form-subtitle">Apenas administradores autorizados</p>
-
-          <div class="form-group">
-            <label for="adminEmail">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              Email Administrativo
-            </label>
-            <input type="email" id="adminEmail" placeholder="admin@wdmanutencoes.com" autocomplete="email">
-          </div>
-
-          <div class="form-group">
-            <label for="adminPassword">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Senha
-            </label>
-            <input type="password" id="adminPassword" placeholder="••••••••" autocomplete="current-password">
-          </div>
-
-          <button onclick="adminLogin()" class="btn btn-primary btn-large">
-            Entrar no Painel
-          </button>
-
-          <div class="admin-link">
-            <a href="/login.html">← Voltar ao login</a>
-          </div>
+<!-- ═══ LOGIN ADMIN ═══ -->
+<div id="loginScreen" class="login-page grid-bg" style="position:fixed;inset:0;z-index:999;display:flex;flex-direction:column">
+  <div class="login-wrapper">
+    <div class="brand-header">
+      <img src="/assets/logo.svg" alt="WD" class="brand-logo">
+      <h1 class="brand-name">WD Manutenções</h1>
+      <p class="brand-tagline">Painel Administrativo</p>
+    </div>
+    <div class="auth-card">
+      <div class="auth-form active" style="display:block">
+        <h2>Acesso Restrito</h2>
+        <p class="auth-subtitle">Apenas administradores autorizados</p>
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Email Admin
+          </label>
+          <input type="email" id="adminEmail" placeholder="admin@wdmanutencoes.com" autocomplete="email">
         </div>
+        <div class="form-group">
+          <label>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Senha
+          </label>
+          <input type="password" id="adminPass" placeholder="••••••••" autocomplete="current-password">
+        </div>
+        <button onclick="doAdminLogin()" class="btn btn-primary btn-full">Entrar no Painel</button>
+        <div class="auth-extra"><a href="/login.html">← Voltar ao login</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PAINEL ═══ -->
+<div id="adminPanel" class="hidden">
+<div class="admin-container">
+
+  <!-- HEADER -->
+  <header class="app-header">
+    <div class="header-brand">
+      <img src="/assets/logo.svg" alt="WD" class="header-logo">
+      <div class="header-title">
+        <h1><span>WD</span> Admin</h1>
+        <p id="adminGreet">Painel Administrativo</p>
+      </div>
+    </div>
+    <button class="btn-logout" onclick="doAdminLogout()">Sair</button>
+  </header>
+
+  <!-- ABAS -->
+  <nav class="admin-tabs">
+    <button class="a-tab active" data-tab="dashboard">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <span>Dashboard</span>
+    </button>
+    <button class="a-tab" data-tab="employees">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>Colaboradores</span>
+    </button>
+    <button class="a-tab" data-tab="records">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>Registros</span>
+    </button>
+    <button class="a-tab" data-tab="reports">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Relatórios</span>
+    </button>
+  </nav>
+
+  <!-- DASHBOARD -->
+  <div id="tabDashboard" class="tab-pane active">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <div><div class="stat-val" id="sEmp">0</div><div class="stat-lbl">Colaboradores</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+        <div><div class="stat-val" id="sToday">0</div><div class="stat-lbl">Registros Hoje</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+        <div><div class="stat-val" id="sTotal">0</div><div class="stat-lbl">Total Registros</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+        <div><div class="stat-val" id="sDays">0</div><div class="stat-lbl">Dias com Registro</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-title">🕐 Atividade <span>Recente</span></div>
+        <button onclick="loadDashboard()" class="btn btn-secondary btn-sm">🔄 Atualizar</button>
+      </div>
+      <div id="activityList" class="activity-list"><p class="empty-msg">Carregando...</p></div>
+    </div>
+
+    <div class="card">
+      <div class="card-top"><div class="card-title">⚙️ <span>Administração</span></div></div>
+      <p style="margin-bottom:16px;color:var(--t2);font-size:13px">Ações irreversíveis. Use com cuidado.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button onclick="clearAll()" class="btn btn-danger">🗑️ Apagar Todos os Registros</button>
+        <button onclick="loadDashboard()" class="btn btn-secondary">🔄 Recarregar</button>
       </div>
     </div>
   </div>
 
-  <!-- ====== PAINEL ADMIN ====== -->
-  <div id="adminPanel" class="screen hidden">
-    <div class="screen::before"></div>
-    <div class="admin-container">
+  <!-- COLABORADORES -->
+  <div id="tabEmployees" class="tab-pane">
+    <div class="card">
+      <div class="card-top">
+        <div class="card-title">👥 <span>Colaboradores</span></div>
+        <input type="text" id="searchEmp" class="search-box" placeholder="🔍 Buscar...">
+      </div>
+      <div id="empGrid" class="emp-grid"><p class="empty-msg">Carregando...</p></div>
+    </div>
+  </div>
 
-      <!-- HEADER ADMIN -->
-      <header class="admin-header">
-        <div class="header-brand">
-          <img src="/assets/logo.svg" alt="WD" class="header-logo">
-          <div>
-            <h1><span>WD</span> Painel Admin</h1>
-            <p id="adminName">Administrador</p>
-          </div>
+  <!-- REGISTROS -->
+  <div id="tabRecords" class="tab-pane">
+    <div class="card">
+      <div class="card-top"><div class="card-title">🔍 <span>Filtros</span></div></div>
+      <div class="filters-grid">
+        <div class="form-group">
+          <label>Data Inicial</label>
+          <input type="date" id="fStart" class="form-control">
         </div>
-        <button onclick="adminLogout()" class="btn-logout">Sair</button>
-      </header>
-
-      <!-- ABAS -->
-      <nav class="admin-tabs">
-        <button class="admin-tab active" data-tab="dashboard">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-          <span>Dashboard</span>
-        </button>
-        <button class="admin-tab" data-tab="employees">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          <span>Colaboradores</span>
-        </button>
-        <button class="admin-tab" data-tab="records">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span>Registros</span>
-        </button>
-        <button class="admin-tab" data-tab="reports">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <span>Relatórios</span>
-        </button>
-      </nav>
-
-      <!-- ABA DASHBOARD -->
-      <div id="tabDashboard" class="admin-tab-content active">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
-            <div class="stat-info">
-              <h3 id="statTotalEmployees">0</h3>
-              <p>Colaboradores Ativos</p>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div class="stat-info">
-              <h3 id="statTodayRecords">0</h3>
-              <p>Registros Hoje</p>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
-            </div>
-            <div class="stat-info">
-              <h3 id="statTotalRecords">0</h3>
-              <p>Total de Registros</p>
-            </div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-icon">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            </div>
-            <div class="stat-info">
-              <h3 id="statAvgRecordsPerDay">0</h3>
-              <p>Média Registros/Dia</p>
-            </div>
-          </div>
+        <div class="form-group">
+          <label>Data Final</label>
+          <input type="date" id="fEnd" class="form-control">
         </div>
-
-        <div class="activity-card">
-          <h2>🕐 Atividade Recente</h2>
-          <div id="recentActivity" class="activity-list">
-            <p class="empty-state">Carregando atividades...</p>
-          </div>
+        <div class="form-group">
+          <label>Colaborador</label>
+          <select id="fUser" class="form-control"><option value="">Todos</option></select>
         </div>
-
-        <div class="activity-card">
-          <h2>⚙️ Administração</h2>
-          <p style="margin-bottom:16px;color:var(--text-muted);font-size:14px">Ações que afetam todos os colaboradores. Use com cautela.</p>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">
-            <button onclick="clearAllRecords()" class="btn btn-danger">🗑️ Limpar Todos os Registros</button>
-            <button onclick="loadDashboard()" class="btn btn-secondary">🔄 Atualizar Dashboard</button>
-          </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="fType" class="form-control">
+            <option value="">Todos</option>
+            <option value="entrada">Entrada</option>
+            <option value="saida_almoco">Saída Almoço</option>
+            <option value="retorno_almoco">Retorno Almoço</option>
+            <option value="saida">Saída</option>
+          </select>
         </div>
       </div>
-
-      <!-- ABA COLABORADORES -->
-      <div id="tabEmployees" class="admin-tab-content">
-        <div class="employees-card">
-          <div class="card-header">
-            <h2>👥 Colaboradores</h2>
-            <input type="text" id="searchEmployee" class="search-input" placeholder="🔍 Buscar colaborador...">
-          </div>
-          <div id="employeesList" class="employees-list">
-            <p class="empty-state">Carregando colaboradores...</p>
-          </div>
-        </div>
+      <div class="filter-actions">
+        <button onclick="applyFilters()"   class="btn btn-primary">🔍 Filtrar</button>
+        <button onclick="clearFilters()"   class="btn btn-secondary">✕ Limpar</button>
+        <button onclick="exportCSV()"      class="btn btn-secondary">📥 CSV</button>
+        <button onclick="exportPDF(App.records,'Todos os Registros')" class="btn btn-secondary">📄 PDF</button>
       </div>
+    </div>
 
-      <!-- ABA REGISTROS -->
-      <div id="tabRecords" class="admin-tab-content">
-        <div class="filters-card">
-          <h2>🔍 Filtrar Registros</h2>
-          <div class="filters-grid">
-            <div class="form-group">
-              <label>Data Inicial</label>
-              <input type="date" id="filterStartDate" class="form-control">
-            </div>
-            <div class="form-group">
-              <label>Data Final</label>
-              <input type="date" id="filterEndDate" class="form-control">
-            </div>
-            <div class="form-group">
-              <label>Colaborador</label>
-              <select id="filterUser" class="form-control">
-                <option value="">Todos os Colaboradores</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Tipo de Registro</label>
-              <select id="filterType" class="form-control">
-                <option value="">Todos os Tipos</option>
-                <option value="entrada">Entrada</option>
-                <option value="saida_almoco">Saída Almoço</option>
-                <option value="retorno_almoco">Retorno Almoço</option>
-                <option value="saida">Saída</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-actions">
-            <button onclick="applyFilters()"  class="btn btn-primary">🔍 Aplicar Filtros</button>
-            <button onclick="clearFilters()"  class="btn btn-secondary">🔄 Limpar</button>
-            <button onclick="exportRecords()" class="btn btn-secondary">📥 Exportar CSV</button>
-          </div>
-        </div>
-
-        <div class="admin-records-card">
-          <div class="records-header">
-            <h2>📋 Registros de Ponto</h2>
-            <span id="recordsCount" class="records-count">0 registros</span>
-          </div>
-          <div id="adminRecordsList" class="admin-records-list">
-            <p class="empty-state">Carregando registros...</p>
-          </div>
-        </div>
+    <div class="card">
+      <div class="card-top">
+        <div class="card-title">📋 <span>Registros</span></div>
+        <span id="recCount" class="count-badge">0 registros</span>
       </div>
-
-      <!-- ABA RELATÓRIOS -->
-      <div id="tabReports" class="admin-tab-content">
-        <div class="reports-card">
-          <h2>📊 Relatórios</h2>
-          <div class="reports-grid">
-            <div class="report-item" onclick="generateDailyReport()">
-              <div class="report-icon">📅</div>
-              <h3>Relatório Diário</h3>
-              <p>Resumo completo dos registros do dia atual</p>
-            </div>
-            <div class="report-item" onclick="generateWeeklyReport()">
-              <div class="report-icon">📆</div>
-              <h3>Relatório Semanal</h3>
-              <p>Resumo dos últimos 7 dias</p>
-            </div>
-            <div class="report-item" onclick="generateMonthlyReport()">
-              <div class="report-icon">📋</div>
-              <h3>Espelho de Ponto</h3>
-              <p>Relatório mensal obrigatório CLT com adicionais</p>
-            </div>
-            <div class="report-item" onclick="generateEmployeeReport()">
-              <div class="report-icon">👤</div>
-              <h3>Por Colaborador</h3>
-              <p>Detalhes individuais de cada funcionário</p>
-            </div>
-          </div>
-          <div id="reportResult" class="report-result"></div>
-        </div>
-      </div>
-
-    </div><!-- /admin-container -->
-  </div><!-- /adminPanel -->
-
-  <!-- MODAL DETALHES DO REGISTRO -->
-  <div id="detailsModal" class="modal hidden">
-    <div class="modal-content modal-large">
-      <div class="modal-header">
-        <h2>📋 Detalhes do Registro</h2>
-        <button class="btn-close" onclick="closeDetailsModal()">×</button>
-      </div>
-      <div class="modal-body">
-        <div id="recordDetails"></div>
+      <div class="records-table-wrap">
+        <table class="records-table">
+          <thead>
+            <tr>
+              <th>Colaborador</th>
+              <th>Tipo</th>
+              <th>Data</th>
+              <th>Hora</th>
+              <th>Local</th>
+              <th>Foto</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="recTbody"></tbody>
+        </table>
       </div>
     </div>
   </div>
 
-  <!-- MODAL DETALHES DO COLABORADOR -->
-  <div id="employeeModal" class="modal hidden">
-    <div class="modal-content modal-large">
-      <div class="modal-header">
-        <h2>👤 Detalhes do Colaborador</h2>
-        <button class="btn-close" onclick="closeEmployeeModal()">×</button>
+  <!-- RELATÓRIOS -->
+  <div id="tabReports" class="tab-pane">
+    <div class="card">
+      <div class="card-top"><div class="card-title">📊 <span>Relatórios</span></div></div>
+      <div class="report-grid">
+        <div class="report-card" onclick="reportDaily()">
+          <div class="ri">📅</div><h3>Diário</h3><p>Resumo do dia atual</p>
+        </div>
+        <div class="report-card" onclick="reportWeekly()">
+          <div class="ri">📆</div><h3>Semanal</h3><p>Últimos 7 dias</p>
+        </div>
+        <div class="report-card" onclick="openEspelhoModal()">
+          <div class="ri">📋</div><h3>Espelho de Ponto</h3><p>Mensal CLT com adicionais</p>
+        </div>
+        <div class="report-card" onclick="reportByEmployee()">
+          <div class="ri">👤</div><h3>Por Colaborador</h3><p>Detalhes individuais</p>
+        </div>
       </div>
-      <div class="modal-body">
-        <div id="employeeDetails"></div>
-      </div>
+      <div id="reportResult" class="report-result"></div>
     </div>
   </div>
 
-  <!-- SCROLL BUTTONS -->
-  <button class="scroll-to-top" id="scrollToTop" onclick="scrollToTopFn()">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="18 15 12 9 6 15"/></svg>
-  </button>
-  <button class="scroll-to-bottom" id="scrollToBottom" onclick="scrollToBottomFn()">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="6 9 12 15 18 9"/></svg>
-  </button>
+</div><!-- /admin-container -->
+</div><!-- /adminPanel -->
 
-  <script src="/js/pwa.js"></script>
-  <script src="/js/admin.js"></script>
+<!-- MODAL EDITAR REGISTRO -->
+<div id="editModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>✏️ Editar Registro</h2>
+      <button class="btn-close" onclick="closeModal('editModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-group">
+        <label>Tipo de Registro</label>
+        <select id="editType" class="form-control">
+          <option value="entrada">🟢 Entrada</option>
+          <option value="saida_almoco">🟡 Saída para Almoço</option>
+          <option value="retorno_almoco">🔵 Retorno do Almoço</option>
+          <option value="saida">🔴 Saída</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Data (DD/MM/AAAA)</label>
+        <input type="text" id="editDate" class="form-control" placeholder="Ex: 05/03/2026" maxlength="10">
+      </div>
+      <div class="form-group">
+        <label>Hora (HH:MM)</label>
+        <input type="text" id="editTime" class="form-control" placeholder="Ex: 08:00" maxlength="5">
+      </div>
+      <div class="form-group">
+        <label>Endereço / Observação</label>
+        <input type="text" id="editAddress" class="form-control" placeholder="Endereço ou obs...">
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button onclick="saveEdit()" class="btn btn-primary" style="flex:1">💾 Salvar</button>
+        <button onclick="closeModal('editModal')" class="btn btn-secondary" style="flex:1">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL DETALHE REGISTRO -->
+<div id="detailModal" class="modal hidden">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h2>📋 Detalhes do Registro</h2>
+      <button class="btn-close" onclick="closeModal('detailModal')">×</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- MODAL COLABORADOR -->
+<div id="empModal" class="modal hidden">
+  <div class="modal-box wide">
+    <div class="modal-head">
+      <h2>👤 Colaborador</h2>
+      <button class="btn-close" onclick="closeModal('empModal')">×</button>
+    </div>
+    <div class="modal-body" id="empBody"></div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRM -->
+<div id="confirmModal" class="modal hidden">
+  <div class="modal-box confirm-box">
+    <div class="modal-head">
+      <h2 id="confirmTitle">Confirmar</h2>
+      <button class="btn-close" onclick="resolveConfirm(false)">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirmMsg" style="line-height:1.7;color:var(--t2);margin-bottom:24px;font-size:14px"></p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary" onclick="resolveConfirm(false)">Cancelar</button>
+        <button class="btn btn-danger"    id="confirmOk" onclick="resolveConfirm(true)">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ESPELHO -->
+<div id="espelhoModal" class="modal hidden">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>📋 Espelho de Ponto</h2>
+      <button class="btn-close" onclick="closeModal('espelhoModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Colaborador</label>
+        <select id="espUser" class="form-control"><option value="">Todos</option></select>
+      </div>
+      <div class="form-group">
+        <label>Mês/Ano</label>
+        <input type="month" id="espMonth" class="form-control">
+      </div>
+      <button onclick="gerarEspelho()" class="btn btn-primary btn-full">📄 Gerar Espelho</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RESULTADO ESPELHO -->
+<div id="espelhoResultModal" class="modal hidden">
+  <div class="modal-box wide" style="max-height:96vh">
+    <div class="modal-head">
+      <h2 id="espelhoResultTitle">Espelho de Ponto</h2>
+      <button class="btn-close" onclick="closeModal('espelhoResultModal')">×</button>
+    </div>
+    <div class="modal-body" id="espelhoResultBody"></div>
+  </div>
+</div>
+
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="18 15 12 9 6 15"/></svg>
+</button>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="/js/pwa.js"></script>
+<script src="/js/admin.js"></script>
 </body>
 </html>

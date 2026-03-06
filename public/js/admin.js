@@ -1,1085 +1,836 @@
-/* ==================================================
-   admin.js — WD Manutenções (Painel Administrativo)
-   ================================================== */
+/* admin.js — WD Manutenções v3 */
+'use strict';
 
-const API_URL   = '/api';
-const SESSION_KEY = 'wd_user';
+const API = '/api';
+const SK  = 'wd_user_v3';
 
-/* ===== FERIADOS NACIONAIS (facilmente extensível) ===== */
+/* ─── FERIADOS 2025-2027 ─── */
 const FERIADOS = new Set([
-  '2025-01-01','2025-02-24','2025-02-25','2025-04-18','2025-04-21',
-  '2025-05-01','2025-06-19','2025-09-07','2025-10-12','2025-11-02',
-  '2025-11-15','2025-11-20','2025-12-25',
-  '2026-01-01','2026-02-16','2026-02-17','2026-04-03','2026-04-21',
-  '2026-05-01','2026-06-04','2026-09-07','2026-10-12','2026-11-02',
-  '2026-11-15','2026-11-20','2026-12-25',
-  '2027-01-01','2027-02-15','2027-02-16','2027-03-26','2027-04-21',
-  '2027-05-01','2027-05-27','2027-09-07','2027-10-12','2027-11-02',
-  '2027-11-15','2027-11-20','2027-12-25'
+  '2025-01-01','2025-02-24','2025-02-25','2025-04-18','2025-04-21','2025-05-01',
+  '2025-06-19','2025-09-07','2025-10-12','2025-11-02','2025-11-15','2025-11-20','2025-12-25',
+  '2026-01-01','2026-02-16','2026-02-17','2026-04-03','2026-04-21','2026-05-01',
+  '2026-06-04','2026-09-07','2026-10-12','2026-11-02','2026-11-15','2026-11-20','2026-12-25',
+  '2027-01-01','2027-02-15','2027-02-16','2027-03-26','2027-04-21','2027-05-01',
+  '2027-05-27','2027-09-07','2027-10-12','2027-11-02','2027-11-15','2027-11-20','2027-12-25',
 ]);
 
-/* ===== ESTADO GLOBAL ===== */
-const App = {
-  admin:       null,
-  records:     [],
-  employees:   [],
-  currentTab:  'dashboard'
-};
+const App = { admin:null, records:[], employees:[], tab:'dashboard' };
 
-/* ==================================================
-   HELPERS
-   ================================================== */
-function esc(str) {
-  if (str == null) return '';
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])
-  );
-}
-
-function adminId() { return App.admin?.id ?? null; }
-
-function isFeriado(isoDate)  { return FERIADOS.has(isoDate); }
-function getDow(brDate)      { // "DD/MM/YYYY" → 0-6
-  const [d,m,y] = brDate.split('/');
-  return new Date(+y, +m-1, +d).getDay();
-}
-function brToIso(brDate) {   // "DD/MM/YYYY" → "YYYY-MM-DD"
-  const [d,m,y] = brDate.split('/');
-  return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-}
-
-function calcMinutes(t1, t2) {
-  if (!t1 || !t2) return 0;
-  const toMin = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
-  return Math.max(0, toMin(t2) - toMin(t1));
-}
-
-function fmtMin(min) {
-  const h = Math.floor(min/60), m = min%60;
-  return `${h}h${String(m).padStart(2,'0')}`;
-}
-
-function fmtDec(min) { return (min/60).toFixed(2); }
-
-function debounce(fn, ms) {
-  let t;
-  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
-}
-
-/* ==================================================
-   TOAST
-   ================================================== */
-function showToast(msg, type = 'success') {
-  document.querySelectorAll('.wd-toast').forEach(t => t.remove());
-  const colors = { success:'#00e676', error:'#ff4444', warning:'#ff9100', info:'#448aff' };
-  const el = document.createElement('div');
-  el.className  = 'wd-toast';
-  el.textContent = msg;
-  el.style.cssText = `
-    position:fixed;top:24px;right:24px;
-    background:${colors[type]||colors.info};
-    color:#000;padding:16px 24px;border-radius:12px;
-    box-shadow:0 10px 40px rgba(0,0,0,0.4);z-index:10000;
-    font-weight:700;font-family:'Barlow',sans-serif;
-    font-size:14px;max-width:400px;line-height:1.5;
-    animation:slideInRight 0.35s ease both;
-  `;
-  document.body.appendChild(el);
-  setTimeout(() => {
-    el.style.animation = 'slideOutRight 0.3s ease forwards';
-    setTimeout(() => el.remove(), 300);
-  }, 3500);
-}
-
-(() => {
-  const s = document.createElement('style');
-  s.textContent = `
-    @keyframes slideInRight  {from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}
-    @keyframes slideOutRight {from{transform:translateX(0);opacity:1}to{transform:translateX(400px);opacity:0}}
-  `;
-  document.head.appendChild(s);
-})();
-
-/* ==================================================
-   INICIALIZAÇÃO
-   ================================================== */
+/* ════════════════════════════════════════
+   INIT
+════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   checkAdminAuth();
-  setupTabListeners();
-  setupSearchListener();
-  window.addEventListener('scroll', updateScrollButtons);
-  updateScrollButtons();
+  setupTabs();
+  document.getElementById('searchEmp')?.addEventListener('input', debounce(filterEmps, 220));
+  window.addEventListener('scroll', () => {
+    document.getElementById('scrollTop')?.classList.toggle('show', scrollY > 280);
+  });
 });
 
-/* ==================================================
-   AUTENTICAÇÃO
-   ================================================== */
+/* ════════════════════════════════════════
+   AUTH
+════════════════════════════════════════ */
 function checkAdminAuth() {
-  const str = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
-  if (str) {
-    const user = JSON.parse(str);
-    if (user.role === 'admin') {
-      App.admin = user;
-      sessionStorage.setItem(SESSION_KEY, str);
-      showAdminPanel();
-      return;
-    }
+  const s = sessionStorage.getItem(SK) || localStorage.getItem(SK);
+  if (s) {
+    const u = JSON.parse(s);
+    if (u.role === 'admin') { App.admin = u; showPanel(); return; }
   }
   showLoginScreen();
 }
 
 function showLoginScreen() {
-  document.getElementById('adminLoginScreen').classList.remove('hidden');
+  document.getElementById('loginScreen').style.display = '';
   document.getElementById('adminPanel').classList.add('hidden');
-  document.getElementById('adminPassword')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') adminLogin();
+  document.getElementById('adminPass')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') doAdminLogin();
   });
 }
 
-async function adminLogin() {
-  const email    = document.getElementById('adminEmail').value.trim();
-  const password = document.getElementById('adminPassword').value;
-  if (!email || !password) { showToast('Preencha email e senha!', 'error'); return; }
-
+async function doAdminLogin() {
+  const email = val('adminEmail'), pass = val('adminPass');
+  if (!email || !pass) return toast('Preencha email e senha', 'error');
   try {
-    const res  = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-
-    if (data.success && data.user.role === 'admin') {
-      App.admin = data.user;
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
-      localStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
-      showAdminPanel();
-      showToast('Acesso autorizado!', 'success');
-    } else {
-      showToast(data.error || 'Credenciais inválidas!', 'error');
-    }
-  } catch (err) {
-    showToast('Erro de conexão: ' + err.message, 'error');
-  }
+    const d = await post('/login', { email, password: pass });
+    if (d.success && d.user.role === 'admin') {
+      App.admin = d.user;
+      const s = JSON.stringify(d.user);
+      sessionStorage.setItem(SK, s); localStorage.setItem(SK, s);
+      showPanel(); toast('Acesso autorizado!', 'success');
+    } else { toast(d.error || 'Credenciais inválidas ou sem permissão', 'error'); }
+  } catch { toast('Erro de conexão', 'error'); }
 }
 
-function showAdminPanel() {
-  // XSS-safe
-  document.getElementById('adminName').textContent = App.admin.name;
-  document.getElementById('adminLoginScreen').classList.add('hidden');
+function showPanel() {
+  document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('adminPanel').classList.remove('hidden');
-  setTimeout(loadDashboard, 100);
+  document.getElementById('adminGreet').textContent = App.admin.name;
+  setTimeout(loadDashboard, 80);
 }
 
-function adminLogout() {
-  if (!confirm('Deseja sair do painel admin?')) return;
-  App.admin     = null;
-  App.records   = [];
-  App.employees = [];
-  sessionStorage.removeItem(SESSION_KEY);
-  localStorage.removeItem(SESSION_KEY);
-  document.getElementById('adminEmail').value    = '';
-  document.getElementById('adminPassword').value = '';
+function doAdminLogout() {
+  if (!confirm('Sair do painel?')) return;
+  App.admin = null; App.records = []; App.employees = [];
+  sessionStorage.removeItem(SK); localStorage.removeItem(SK);
+  document.getElementById('adminEmail').value = '';
+  document.getElementById('adminPass').value  = '';
   showLoginScreen();
 }
 
-/* ==================================================
+/* ════════════════════════════════════════
    ABAS
-   ================================================== */
-function setupTabListeners() {
+════════════════════════════════════════ */
+function setupTabs() {
   document.querySelector('.admin-tabs')?.addEventListener('click', e => {
-    const btn = e.target.closest('.admin-tab');
+    const btn = e.target.closest('.a-tab');
     if (!btn) return;
-    const tab = btn.getAttribute('data-tab');
-    if (tab) switchTab(tab);
+    const t = btn.getAttribute('data-tab');
+    if (t) switchTab(t);
   });
 }
 
 function switchTab(name) {
-  App.currentTab = name;
-  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
-  document.querySelector(`.admin-tab[data-tab="${name}"]`)?.classList.add('active');
-  document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1))?.classList.add('active');
-
-  switch (name) {
-    case 'dashboard': loadDashboard(); break;
-    case 'employees': loadEmployees(); break;
-    case 'records':   loadAllRecords(); break;
-  }
+  App.tab = name;
+  document.querySelectorAll('.a-tab').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.a-tab[data-tab="${name}"]`)?.classList.add('active');
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  const cap = name.charAt(0).toUpperCase() + name.slice(1);
+  document.getElementById('tab'+cap)?.classList.add('active');
+  if (name === 'dashboard')  loadDashboard();
+  if (name === 'employees')  loadEmployees();
+  if (name === 'records')    loadAllRecords();
 }
 
-/* ==================================================
+/* ════════════════════════════════════════
    DASHBOARD
-   ================================================== */
+════════════════════════════════════════ */
 async function loadDashboard() {
   try {
-    const [statsRes, recRes] = await Promise.all([
-      fetch(`${API_URL}/stats`),
-      fetch(`${API_URL}/records`)
-    ]);
-    const stats   = await statsRes.json();
-    const recData = await recRes.json();
-    App.records   = recData.records || [];
+    const [sr, rr] = await Promise.all([fetch(`${API}/stats`), fetch(`${API}/records`)]);
+    const stats = await sr.json();
+    const rdata = await rr.json();
+    App.records = rdata.records || [];
 
-    document.getElementById('statTotalEmployees').textContent = stats.total_employees || 0;
-    document.getElementById('statTodayRecords').textContent   = stats.today_records   || 0;
-    document.getElementById('statTotalRecords').textContent   = stats.total_records   || 0;
+    document.getElementById('sEmp').textContent   = stats.total_employees || 0;
+    document.getElementById('sToday').textContent = stats.today_records   || 0;
+    document.getElementById('sTotal').textContent = stats.total_records   || 0;
+    const days = new Set(App.records.map(r=>r.date)).size;
+    document.getElementById('sDays').textContent  = days;
 
-    const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
-    document.getElementById('statAvgRecordsPerDay').textContent =
-      Math.round((stats.total_records || 0) / daysInMonth) || 0;
-
-    // Popula filtro de usuários
-    const sel = document.getElementById('filterUser');
+    // popula filtro usuário
+    const sel = document.getElementById('fUser');
     if (sel) {
-      const users = [...new Set(App.records.map(r => r.user_name))].sort();
-      sel.innerHTML = '<option value="">Todos os Colaboradores</option>' +
-        users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
+      const users = [...new Set(App.records.map(r=>r.user_name))].sort();
+      sel.innerHTML = '<option value="">Todos</option>' + users.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join('');
     }
-
-    renderRecentActivity(App.records.slice(0, 10));
-  } catch (err) {
-    showToast('Erro ao carregar dashboard: ' + err.message, 'error');
-  }
+    renderActivity(App.records.slice(0, 12));
+  } catch(e) { toast('Erro ao carregar dashboard: '+e.message, 'error'); }
 }
 
-function renderRecentActivity(records) {
-  const el = document.getElementById('recentActivity');
+function renderActivity(recs) {
+  const el = document.getElementById('activityList');
   if (!el) return;
-  if (!records.length) { el.innerHTML = '<p class="empty-state">Nenhuma atividade</p>'; return; }
-
+  if (!recs.length) { el.innerHTML = '<p class="empty-msg">Nenhuma atividade</p>'; return; }
   el.innerHTML = '';
-  records.forEach(r => {
-    const item = document.createElement('div');
-    item.className = 'activity-item';
-    item.onclick = () => showRecordDetails(r.id);
-    item.innerHTML = `
-      <div class="activity-icon">${getTypeEmoji(r.type)}</div>
-      <div class="activity-content">
+  recs.forEach(r => {
+    const d = document.createElement('div');
+    d.className = 'act-item';
+    d.onclick = () => showRecordDetail(r.id);
+    d.innerHTML = `
+      <div class="act-icon">${typeEmoji(r.type)}</div>
+      <div class="act-body">
         <strong>${esc(r.user_name)}</strong>
-        <small>${getTypeLabel(r.type)} — ${esc(r.date)}</small>
+        <small>${typeLabel(r.type)} — ${esc(r.date)}</small>
       </div>
-      <div class="activity-time">${esc(r.time.slice(0,8))}</div>
+      <div class="act-time">${esc(r.time.slice(0,5))}</div>
     `;
-    el.appendChild(item);
+    el.appendChild(d);
   });
 }
 
-/* ==================================================
+/* ════════════════════════════════════════
    COLABORADORES
-   ================================================== */
+════════════════════════════════════════ */
 async function loadEmployees() {
   try {
-    const [recRes, usrRes] = await Promise.all([
-      fetch(`${API_URL}/records`),
-      fetch(`${API_URL}/users?admin_id=${adminId()}`)
+    const [rr, ur] = await Promise.all([
+      fetch(`${API}/records`),
+      fetch(`${API}/users?admin_id=${App.admin.id}`)
     ]);
-
-    if (!recRes.ok || !usrRes.ok) throw new Error('Erro na requisição');
-
-    App.records   = (await recRes.json()).records || [];
-    const usrData = await usrRes.json();
-    const empList = (usrData.users || []).filter(u => u.role === 'employee');
-
-    App.employees = empList.map(u => {
-      const recs   = App.records.filter(r => Number(r.user_id) === Number(u.id));
-      const last   = recs.length
-        ? recs.reduce((a,b) => b.timestamp > a.timestamp ? b : a, recs[0])
-        : null;
-      return { id:u.id, name:u.name, email:u.email, totalRecords:recs.length, last };
-    });
-
-    renderEmployees(App.employees);
-  } catch (err) {
-    showToast('Erro ao carregar colaboradores: ' + err.message, 'error');
-  }
+    App.records   = (await rr.json()).records || [];
+    const ud      = await ur.json();
+    App.employees = (ud.users || [])
+      .filter(u => u.role === 'employee')
+      .map(u => {
+        const recs = App.records.filter(r => Number(r.user_id) === Number(u.id));
+        const last = recs[0] || null;
+        return { ...u, recs, last };
+      });
+    renderEmps(App.employees);
+  } catch(e) { toast('Erro: '+e.message, 'error'); }
 }
 
-function setupSearchListener() {
-  document.getElementById('searchEmployee')?.addEventListener(
-    'input', debounce(filterEmployees, 250)
-  );
+function filterEmps() {
+  const q = (document.getElementById('searchEmp')?.value || '').toLowerCase();
+  renderEmps(App.employees.filter(e => e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q)));
 }
 
-function filterEmployees() {
-  const q = document.getElementById('searchEmployee')?.value.toLowerCase() || '';
-  renderEmployees(App.employees.filter(e =>
-    e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q)
-  ));
-}
-
-function renderEmployees(list) {
-  const el = document.getElementById('employeesList');
+function renderEmps(list) {
+  const el = document.getElementById('empGrid');
   if (!el) return;
-  if (!list.length) { el.innerHTML = '<p class="empty-state">Nenhum colaborador encontrado</p>'; return; }
-
+  if (!list.length) { el.innerHTML = '<p class="empty-msg">Nenhum colaborador</p>'; return; }
   const today = new Date().toLocaleDateString('pt-BR');
   el.innerHTML = '';
-
   list.forEach(emp => {
-    const initials  = emp.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
-    const todayCnt  = App.records.filter(r => r.user_email === emp.email && r.date === today).length;
-
+    const init = emp.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+    const todayC = emp.recs.filter(r=>r.date===today).length;
     const card = document.createElement('div');
-    card.className = 'employee-card';
-    card.onclick = e => {
-      // Previne que o clique no botão excluir abra o modal
-      if (e.target.closest('.btn-danger')) return;
-      showEmployeeDetails(emp.id);
-    };
+    card.className = 'emp-card';
     card.innerHTML = `
-      <div class="employee-header">
-        <div class="employee-avatar">${esc(initials)}</div>
-        <div class="employee-info">
+      <div class="emp-head">
+        <div class="emp-avatar">${esc(init)}</div>
+        <div class="emp-info">
           <h3>${esc(emp.name)}</h3>
           <p>${esc(emp.email)}</p>
         </div>
       </div>
-      <div class="employee-stats">
-        <div class="employee-stat">
-          <span class="employee-stat-value">${emp.totalRecords}</span>
-          <span class="employee-stat-label">Total</span>
-        </div>
-        <div class="employee-stat">
-          <span class="employee-stat-value">${todayCnt}</span>
-          <span class="employee-stat-label">Hoje</span>
-        </div>
+      <div class="emp-stats">
+        <div class="emp-stat"><span class="emp-stat-val">${emp.recs.length}</span><span class="emp-stat-lbl">Total</span></div>
+        <div class="emp-stat"><span class="emp-stat-val">${todayC}</span><span class="emp-stat-lbl">Hoje</span></div>
       </div>
-      <button class="btn btn-danger" style="width:100%;margin-top:12px"
-        onclick="deleteEmployee(event,${emp.id},'${esc(emp.name)}')">
-        🗑️ Excluir Conta
-      </button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="event.stopPropagation();showEmpDetail(${emp.id})">👁 Detalhes</button>
+        <button class="btn btn-danger btn-sm"    style="flex:1" onclick="event.stopPropagation();deleteEmp(${emp.id},'${esc(emp.name)}')">🗑 Excluir</button>
+      </div>
     `;
+    card.onclick = () => showEmpDetail(emp.id);
     el.appendChild(card);
   });
 }
 
-function showEmployeeDetails(userId) {
-  const emp = App.employees.find(e => Number(e.id) === Number(userId));
+function showEmpDetail(id) {
+  const emp = App.employees.find(e => Number(e.id) === Number(id));
   if (!emp) return;
+  const init = emp.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+  const today = new Date().toLocaleDateString('pt-BR');
+  const todayC = emp.recs.filter(r=>r.date===today).length;
 
-  const recs    = App.records.filter(r => Number(r.user_id) === Number(emp.id));
-  const today   = new Date().toLocaleDateString('pt-BR');
-  const todayRecs = recs.filter(r => r.date === today);
-  const initials = emp.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
-
-  const el = document.getElementById('employeeDetails');
-  el.innerHTML = `
-    <div class="employee-details-header">
-      <div class="employee-details-avatar">${esc(initials)}</div>
-      <div class="employee-details-info">
-        <h3>${esc(emp.name)}</h3>
-        <p>📧 ${esc(emp.email)}</p>
-        <p>🕐 Último: ${emp.last ? esc(emp.last.date) + ' ' + esc(emp.last.time.slice(0,5)) : 'Nenhum'}</p>
-      </div>
-    </div>
-    <div class="employee-details-stats">
-      <div class="employee-detail-stat">
-        <span class="employee-detail-stat-value">${recs.length}</span>
-        <span class="employee-detail-stat-label">Total</span>
-      </div>
-      <div class="employee-detail-stat">
-        <span class="employee-detail-stat-value">${todayRecs.length}</span>
-        <span class="employee-detail-stat-label">Hoje</span>
-      </div>
-      <div class="employee-detail-stat">
-        <span class="employee-detail-stat-value">${recs.filter(r=>r.type==='entrada').length}</span>
-        <span class="employee-detail-stat-label">Entradas</span>
-      </div>
-      <div class="employee-detail-stat">
-        <span class="employee-detail-stat-value">${recs.filter(r=>r.type==='saida').length}</span>
-        <span class="employee-detail-stat-label">Saídas</span>
-      </div>
-    </div>
-    <h3 style="margin:20px 0 12px;font-size:18px;font-family:var(--font-display);letter-spacing:2px">
-      ÚLTIMOS REGISTROS
-    </h3>
-    <div class="admin-records-list" id="empRecordsList"></div>
-  `;
-
-  const recListEl = el.querySelector('#empRecordsList');
-  recs.slice(0,15).forEach(r => {
-    const item = document.createElement('div');
-    item.className = 'admin-record-item';
-    item.onclick = () => showRecordDetails(r.id);
-    item.innerHTML = `
-      <div class="admin-record-main">
-        <div class="admin-record-user">
-          <span class="record-badge badge-${r.type.replace(/_/g,'-')}">${getTypeLabel(r.type)}</span>
-        </div>
-        <div class="admin-record-datetime">
-          <span>📅 ${esc(r.date)}</span>
-          <span>🕐 ${esc(r.time.slice(0,8))}</span>
-        </div>
-      </div>
-    `;
-    recListEl.appendChild(item);
-  });
-
-  document.getElementById('employeeModal').classList.remove('hidden');
-}
-
-function closeEmployeeModal() {
-  document.getElementById('employeeModal').classList.add('hidden');
-}
-
-/* ==================================================
-   REGISTROS
-   ================================================== */
-async function loadAllRecords() {
-  try {
-    const res = await fetch(`${API_URL}/records`);
-    App.records = (await res.json()).records || [];
-    renderAdminRecords(App.records);
-  } catch (err) {
-    showToast('Erro ao carregar registros: ' + err.message, 'error');
-  }
-}
-
-function renderAdminRecords(records) {
-  const el    = document.getElementById('adminRecordsList');
-  const count = document.getElementById('recordsCount');
-  if (!el) return;
-
-  if (count) count.textContent = `${records.length} registro${records.length !== 1 ? 's' : ''}`;
-
-  if (!records.length) { el.innerHTML = '<p class="empty-state">Nenhum registro encontrado</p>'; return; }
-
-  el.innerHTML = '';
-  records.forEach(r => {
-    const item = document.createElement('div');
-    item.className = 'admin-record-item';
-    item.onclick = () => showRecordDetails(r.id);
-    item.innerHTML = `
-      <div class="admin-record-main">
-        <div class="admin-record-user">
-          <strong>${esc(r.user_name)}</strong>
-          <span class="record-badge badge-${r.type.replace(/_/g,'-')}">${getTypeLabel(r.type)}</span>
-        </div>
-        <div class="admin-record-datetime">
-          <span>📅 ${esc(r.date)}</span>
-          <span>🕐 ${esc(r.time.slice(0,8))}</span>
-        </div>
-      </div>
-      <div class="admin-record-actions">
-        ${r.photo    ? '📷' : ''}
-        ${r.latitude ? '📍' : ''}
-        <span>VER →</span>
-      </div>
-    `;
-    el.appendChild(item);
-  });
-}
-
-function showRecordDetails(recordId) {
-  const r = App.records.find(rec => rec.id === recordId);
-  if (!r) return;
-
-  // Suporta: filename salvo no disco, base64 inline, ou null
-  let photoUrl = null;
-  if (r.photo) {
-    if (r.photo.startsWith('data:image')) {
-      // Base64 direto (registros antigos ou modo offline)
-      photoUrl = r.photo;
-    } else {
-      // Nome de arquivo salvo em /uploads/
-      photoUrl = `/uploads/${r.photo}`;
-    }
-  }
-
-  const el = document.getElementById('recordDetails');
-  el.innerHTML = `
-    <div class="record-details">
-      <div class="detail-row">
-        <strong>👤 Colaborador</strong><span>${esc(r.user_name)}</span>
-      </div>
-      <div class="detail-row">
-        <strong>📧 Email</strong><span>${esc(r.user_email)}</span>
-      </div>
-      <div class="detail-row">
-        <strong>⏱️ Tipo</strong>
-        <span class="record-badge badge-${r.type.replace(/_/g,'-')}">${getTypeLabel(r.type)}</span>
-      </div>
-      <div class="detail-row">
-        <strong>📅 Data/Hora</strong><span>${esc(r.date)} ${esc(r.time.slice(0,8))}</span>
-      </div>
-      ${photoUrl ? `
-        <div class="detail-row detail-photo">
-          <strong>📷 Foto</strong>
-          <img src="${photoUrl}" alt="Foto do registro" loading="lazy">
-        </div>
-      ` : `<div class="detail-row"><strong>📷 Foto</strong><span>Não capturada</span></div>`}
-      ${r.latitude ? `
-        <div class="detail-row">
-          <strong>📍 Local</strong>
-          <span style="text-align:right">${esc(r.address || r.latitude + ', ' + r.longitude)}</span>
-        </div>
-        <div style="margin-top:12px">
-          <a href="https://www.google.com/maps?q=${r.latitude},${r.longitude}"
-             target="_blank" rel="noopener noreferrer" class="btn btn-primary">
-            🗺️ Ver no Google Maps
-          </a>
-        </div>
-      ` : `<div class="detail-row"><strong>📍 Local</strong><span>Não capturado</span></div>`}
-    </div>
-  `;
-  document.getElementById('detailsModal').classList.remove('hidden');
-}
-
-function closeDetailsModal() {
-  document.getElementById('detailsModal').classList.add('hidden');
-}
-
-/* ==================================================
-   FILTROS
-   ================================================== */
-function applyFilters() {
-  const start = document.getElementById('filterStartDate').value;
-  const end   = document.getElementById('filterEndDate').value;
-  const user  = document.getElementById('filterUser').value;
-  const type  = document.getElementById('filterType').value;
-
-  let filtered = [...App.records];
-
-  if (start && end) {
-    filtered = filtered.filter(r => {
-      const iso = brToIso(r.date);
-      return iso >= start && iso <= end;
-    });
-  }
-
-  if (user) filtered = filtered.filter(r => r.user_name === user);
-  if (type) filtered = filtered.filter(r => r.type === type);
-
-  renderAdminRecords(filtered);
-  showToast(`${filtered.length} registro(s) encontrado(s)`, 'success');
-}
-
-function clearFilters() {
-  ['filterStartDate','filterEndDate'].forEach(id => document.getElementById(id).value = '');
-  ['filterUser','filterType'].forEach(id => document.getElementById(id).selectedIndex = 0);
-  renderAdminRecords(App.records);
-  showToast('Filtros limpos', 'success');
-}
-
-/* ==================================================
-   EXPORTAÇÃO CSV
-   ================================================== */
-function exportRecords() {
-  if (!App.records.length) { showToast('Nenhum registro para exportar!', 'error'); return; }
-
-  const header = 'Nome,Email,Tipo,Data,Hora,Localização\n';
-  const rows   = App.records.map(r => {
-    const label = getTypeLabel(r.type).replace(/[🟢🟡🔵🔴]/g,'').trim();
-    return `"${r.user_name}","${r.user_email}","${label}","${r.date}","${r.time}","${r.address || ''}"`;
-  }).join('\n');
-
-  const blob = new Blob(['\ufeff' + header + rows], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = `WD_Registros_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('📥 CSV exportado com sucesso!', 'success');
-}
-
-/* ==================================================
-   RELATÓRIOS
-   ================================================== */
-function generateDailyReport() {
-  const today   = new Date().toLocaleDateString('pt-BR');
-  const records = App.records.filter(r => r.date === today);
-  const users   = new Set(records.map(r => r.user_name));
-
-  let html = `
-    <p><strong>Data:</strong> ${today}</p>
-    <p><strong>Total de registros:</strong> ${records.length}</p>
-    <p><strong>Colaboradores presentes:</strong> ${users.size}</p>
-  `;
-
-  if (records.length) {
-    html += '<br><table style="width:100%;border-collapse:collapse">' +
-      '<thead><tr style="background:rgba(255,215,0,0.1)">' +
-      '<th style="padding:10px;border:1px solid var(--border);text-align:left">Colaborador</th>' +
-      '<th style="padding:10px;border:1px solid var(--border)">Tipo</th>' +
-      '<th style="padding:10px;border:1px solid var(--border)">Hora</th>' +
-      '</tr></thead><tbody>';
-    records.forEach(r => {
-      html += `<tr>
-        <td style="padding:10px;border:1px solid var(--border)">${esc(r.user_name)}</td>
-        <td style="padding:10px;border:1px solid var(--border);text-align:center">${getTypeLabel(r.type)}</td>
-        <td style="padding:10px;border:1px solid var(--border);text-align:center">${esc(r.time.slice(0,8))}</td>
-      </tr>`;
-    });
-    html += '</tbody></table>';
-  } else {
-    html += '<p style="margin-top:16px;color:var(--text-muted)">Nenhum registro hoje.</p>';
-  }
-
-  showReportResult('📅 Relatório Diário — ' + today, html);
-}
-
-function generateWeeklyReport() {
-  const now     = new Date();
-  const weekAgo = new Date(now - 7*24*60*60*1000);
-  const records = App.records.filter(r => {
-    const [d,m,y] = r.date.split('/');
-    const dt = new Date(+y, +m-1, +d);
-    return dt >= weekAgo && dt <= now;
-  });
-
-  const byDay = {};
-  records.forEach(r => {
-    byDay[r.date] = (byDay[r.date] || 0) + 1;
-  });
-
-  showReportResult('📆 Relatório Semanal', `
-    <p><strong>Período:</strong> Últimos 7 dias</p>
-    <p><strong>Total:</strong> ${records.length}</p>
-    <p><strong>Colaboradores:</strong> ${new Set(records.map(r=>r.user_name)).size}</p>
-    <p><strong>Média/dia:</strong> ${(records.length/7).toFixed(1)}</p>
-  `);
-}
-
-function generateMonthlyReport() { openEspelhoModal(); }
-
-function generateEmployeeReport() {
-  if (!App.employees.length) {
-    showToast('Acesse a aba Colaboradores primeiro', 'error'); return;
-  }
-  let html = '';
-  App.employees.forEach(emp => {
-    const recs = App.records.filter(r => r.user_email === emp.email);
-    html += `
-      <div style="margin-bottom:16px;padding:16px;background:rgba(0,0,0,0.2);border-radius:10px;
-                  border-left:3px solid var(--yellow)">
-        <h4 style="margin-bottom:8px">${esc(emp.name)}</h4>
-        <p style="font-size:13px;color:var(--text-muted)">
-          Total: ${recs.length} |
-          Entradas: ${recs.filter(r=>r.type==='entrada').length} |
-          Saídas: ${recs.filter(r=>r.type==='saida').length}
-        </p>
-      </div>
-    `;
-  });
-  showReportResult('👤 Relatório por Colaborador', html);
-}
-
-function showReportResult(title, content) {
-  const el = document.getElementById('reportResult');
-  if (!el) return;
-  el.innerHTML = `<h3>${title}</h3>${content}`;
-  el.classList.add('active');
-  el.scrollIntoView({ behavior:'smooth', block:'nearest' });
-}
-
-/* ==================================================
-   ESPELHO DE PONTO
-   ================================================== */
-function openEspelhoModal() {
-  const existing = document.getElementById('espelhoModal');
-  if (existing) existing.remove();
-
-  const users = [...new Set(App.records.map(r => r.user_name))].sort();
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.id        = 'espelhoModal';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>📋 Espelho de Ponto</h2>
-        <button class="btn-close" onclick="document.getElementById('espelhoModal').remove()">×</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label>Colaborador</label>
-          <select id="espelhoUser" class="form-control">
-            <option value="">Todos</option>
-            ${users.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Mês/Ano</label>
-          <input type="month" id="espelhoMonth" class="form-control"
-            value="${new Date().toISOString().slice(0,7)}">
-        </div>
-        <button onclick="gerarEspelhoPonto()" class="btn btn-primary btn-large">📄 Gerar Espelho</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-}
-
-function gerarEspelhoPonto() {
-  const userName  = document.getElementById('espelhoUser').value;
-  const monthYear = document.getElementById('espelhoMonth').value;
-  if (!monthYear) { showToast('Selecione o mês/ano', 'error'); return; }
-
-  const [year, month] = monthYear.split('-');
-  const monthLabel = new Date(+year, +month-1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
-
-  let records = App.records.filter(r => {
-    const [,m,y] = r.date.split('/');
-    return y === year && m === month.padStart(2,'0');
-  });
-  if (userName) records = records.filter(r => r.user_name === userName);
-
-  if (!records.length) { showToast('Nenhum registro neste período', 'error'); return; }
-
-  // Agrupa por usuário e data
-  const byUser = {};
-  records.forEach(r => {
-    if (!byUser[r.user_name]) byUser[r.user_name] = {};
-    if (!byUser[r.user_name][r.date]) byUser[r.user_name][r.date] = [];
-    byUser[r.user_name][r.date].push(r);
-  });
-
-  let html = '';
-  Object.keys(byUser).forEach(u => {
-    html += buildEspelhoTable(u, monthLabel, byUser[u]);
-  });
-
-  document.getElementById('espelhoModal')?.remove();
-  showEspelhoResult(monthLabel.toUpperCase(), html);
-}
-
-function buildEspelhoTable(userName, monthLabel, userRecords) {
-  const dates = Object.keys(userRecords).sort((a,b) => {
-    const toDate = d => { const [dd,mm,yy]=d.split('/'); return new Date(+yy,+mm-1,+dd); };
-    return toDate(a) - toDate(b);
-  });
-
-  let horasUteis = 0, horasSab = 0, horasDomFer = 0;
-  let daysWorked = 0, incompletos = 0;
-  let rows = '';
-
-  dates.forEach(date => {
-    const day    = userRecords[date].sort((a,b)=>a.timestamp-b.timestamp);
-    const dd     = date.split('/')[0];
-    const dow    = getDow(date);
-    const isofmt = brToIso(date);
-    const isFer  = isFeriado(isofmt);
-
-    const entrada        = day.find(r=>r.type==='entrada');
-    const saidaAlm       = day.find(r=>r.type==='saida_almoco');
-    const retornoAlm     = day.find(r=>r.type==='retorno_almoco');
-    const saida          = day.find(r=>r.type==='saida');
-
-    let mins = 0;
-    if (entrada && saidaAlm)    mins += calcMinutes(entrada.time, saidaAlm.time);
-    if (retornoAlm && saida)    mins += calcMinutes(retornoAlm.time, saida.time);
-
-    // Detecta dias incompletos
-    const hasEntrada = !!entrada;
-    const hasSaida   = !!saida;
-    const incomplete = hasEntrada && !hasSaida;
-    if (incomplete) incompletos++;
-
-    let tipoDia, bgColor;
-    if (isFer)        { tipoDia = '🎊 Feriado'; bgColor = '#ffe5e5'; horasDomFer += mins; }
-    else if (dow===0) { tipoDia = '☀️ Domingo'; bgColor = '#ffe5e5'; horasDomFer += mins; }
-    else if (dow===6) { tipoDia = '📅 Sábado';  bgColor = '#fff8e5'; horasSab    += mins; }
-    else              { tipoDia = '📋 Dia Útil'; bgColor = '#f9f9f9'; horasUteis  += mins; }
-
-    if (mins > 0) daysWorked++;
-
-    const total = mins > 0 ? fmtMin(mins) : incomplete ? '⚠️ Incompleto' : '-';
-    const totalStyle = incomplete ? 'color:#ff9100;font-weight:700' : 'font-weight:700';
-
-    rows += `<tr style="background:${bgColor}">
-      <td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:600">${dd}</td>
-      <td style="padding:9px;border:1px solid #ddd;text-align:center;font-size:11px;font-weight:600">${tipoDia}</td>
-      <td style="padding:9px;border:1px solid #ddd;text-align:center">${entrada    ? entrada.time.slice(0,5)    : '-'}</td>
-      <td style="padding:9px;border:1px solid #ddd;text-align:center">${saidaAlm   ? saidaAlm.time.slice(0,5)   : '-'}</td>
-      <td style="padding:9px;border:1px solid #ddd;text-align:center">${retornoAlm ? retornoAlm.time.slice(0,5) : '-'}</td>
-      <td style="padding:9px;border:1px solid #ddd;text-align:center">${saida      ? saida.time.slice(0,5)      : '-'}</td>
-      <td style="padding:9px;border:1px solid #ddd;text-align:center;${totalStyle}">${total}</td>
+  let recsHtml = '';
+  emp.recs.slice(0, 15).forEach(r => {
+    recsHtml += `<tr onclick="showRecordDetail(${r.id})" style="cursor:pointer">
+      <td><span class="rec-badge badge-${r.type.replace(/_/g,'-')}">${typeLabel(r.type)}</span></td>
+      <td>${esc(r.date)}</td>
+      <td>${esc(r.time.slice(0,8))}</td>
+      <td>${r.has_photo?'📷':'—'}</td>
+      <td>${r.latitude?'📍':'—'}</td>
     </tr>`;
   });
 
-  // Totais com adicionais
-  const totUteis   = horasUteis;
-  const totSab     = Math.round(horasSab * 1.5);
-  const totDomFer  = Math.round(horasDomFer * 2.0);
-  const totalGeral = totUteis + totSab + totDomFer;
-
-  const avisoIncompleto = incompletos > 0
-    ? `<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-top:16px;color:#856404">
-        ⚠️ <strong>${incompletos} dia(s) com registro incompleto</strong> (entrada sem saída correspondente).
-        Estes dias não foram contabilizados nas horas totais.
-       </div>` : '';
-
-  return `
-    <div style="page-break-after:always;margin-bottom:40px;font-family:Arial,sans-serif">
-      <div style="background:linear-gradient(135deg,#FFD700,#FFA500);color:#0a0a0a;padding:24px 32px;
-                  border-radius:12px 12px 0 0;text-align:center">
-        <h2 style="margin:0;font-size:24px;font-weight:900;letter-spacing:3px;text-transform:uppercase">
-          WD MANUTENÇÕES
-        </h2>
-        <h3 style="margin:8px 0 0;font-size:16px;font-weight:600">
-          ESPELHO DE PONTO ELETRÔNICO
-        </h3>
-      </div>
-
-      <div style="background:white;color:#111;padding:28px;border-radius:0 0 12px 12px;
-                  border:1px solid #ddd;border-top:none">
-        <div style="margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #FFD700">
-          <p style="margin:4px 0"><strong>COLABORADOR:</strong> ${esc(userName)}</p>
-          <p style="margin:4px 0"><strong>PERÍODO:</strong> ${monthLabel.toUpperCase()}</p>
-          <p style="margin:4px 0"><strong>EMISSÃO:</strong>
-            ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}
-          </p>
-        </div>
-
-        <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="background:#FFD700;color:#0a0a0a">
-              <th style="padding:10px;border:1px solid #ddd">DIA</th>
-              <th style="padding:10px;border:1px solid #ddd">TIPO</th>
-              <th style="padding:10px;border:1px solid #ddd">ENTRADA</th>
-              <th style="padding:10px;border:1px solid #ddd">S. ALMOÇO</th>
-              <th style="padding:10px;border:1px solid #ddd">RETORNO</th>
-              <th style="padding:10px;border:1px solid #ddd">SAÍDA</th>
-              <th style="padding:10px;border:1px solid #ddd">TOTAL</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-
-        ${avisoIncompleto}
-
-        <div style="margin-top:24px;padding:18px;background:#f8f9fa;border-radius:10px;
-                    border:2px solid #FFD700">
-          <h3 style="margin:0 0 16px;text-align:center;font-size:16px">📊 RESUMO COM ADICIONAIS</h3>
-          <table style="width:100%;border-collapse:collapse">
-            <thead>
-              <tr style="background:#FFD700;color:#0a0a0a">
-                <th style="padding:10px;border:1px solid #ddd;text-align:left">Tipo</th>
-                <th style="padding:10px;border:1px solid #ddd;text-align:center">Horas</th>
-                <th style="padding:10px;border:1px solid #ddd;text-align:center">Adicional</th>
-                <th style="padding:10px;border:1px solid #ddd;text-align:center">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="background:#f9f9f9">
-                <td style="padding:10px;border:1px solid #ddd">📋 Dias Úteis</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasUteis)} (${fmtDec(horasUteis)}h)</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center">—</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:#e8f5e9">${fmtMin(horasUteis)}</td>
-              </tr>
-              <tr style="background:#fff8e5">
-                <td style="padding:10px;border:1px solid #ddd">📅 Sábados</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasSab)} (${fmtDec(horasSab)}h)</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;color:#d97706;font-weight:600">+50%</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fef3c7">${fmtMin(totSab)}</td>
-              </tr>
-              <tr style="background:#ffe5e5">
-                <td style="padding:10px;border:1px solid #ddd">☀️ Dom/Feriados</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasDomFer)} (${fmtDec(horasDomFer)}h)</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;color:#dc2626;font-weight:600">+100%</td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fee2e2">${fmtMin(totDomFer)}</td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr style="background:#FFD700;color:#0a0a0a">
-                <td colspan="3" style="padding:13px;border:1px solid #ddd;text-align:right;font-weight:800;font-size:15px">
-                  💰 TOTAL GERAL:
-                </td>
-                <td style="padding:13px;border:1px solid #ddd;text-align:center;font-weight:900;font-size:17px">
-                  ${fmtMin(totalGeral)} (${fmtDec(totalGeral)}h)
-                </td>
-              </tr>
-              <tr style="background:#f5f5f5">
-                <td colspan="3" style="padding:10px;border:1px solid #ddd;text-align:right;font-weight:600">
-                  DIAS TRABALHADOS:
-                </td>
-                <td style="padding:10px;border:1px solid #ddd;text-align:center;font-weight:700">
-                  ${daysWorked} dias
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div style="margin-top:20px;padding:12px;background:#f0f0f0;border-radius:8px;font-size:12px">
-          <strong>📌 LEGENDA:</strong>
-          Dia Útil (Seg–Sex): sem adicional &nbsp;|&nbsp;
-          Sábado: +50% &nbsp;|&nbsp;
-          Domingo/Feriado: +100%
-        </div>
-
-        <div style="margin-top:40px;padding-top:20px;border-top:2px solid #FFD700">
-          <p style="text-align:center;font-size:11px;color:#666;margin-bottom:40px">
-            Documento gerado eletronicamente pelo Sistema WD Manutenções.<br>
-            Válido conforme CLT Art. 74, § 2º. Gerado em
-            ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}
-          </p>
-          <div style="display:flex;justify-content:space-around;gap:40px">
-            <div style="text-align:center;flex:1">
-              <div style="border-top:2px solid #000;margin-bottom:8px"></div>
-              <p style="font-size:12px;font-weight:600">Assinatura do Colaborador</p>
-            </div>
-            <div style="text-align:center;flex:1">
-              <div style="border-top:2px solid #000;margin-bottom:8px"></div>
-              <p style="font-size:12px;font-weight:600">Assinatura do Responsável</p>
-            </div>
-          </div>
-        </div>
+  document.getElementById('empBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:18px;padding:18px;background:rgba(0,0,0,.25);border-radius:var(--r);margin-bottom:20px">
+      <div style="width:72px;height:72px;border-radius:50%;background:linear-gradient(135deg,var(--y),var(--yd));display:flex;align-items:center;justify-content:center;font-family:var(--fb);font-size:28px;font-weight:900;color:#000;flex-shrink:0">${esc(init)}</div>
+      <div>
+        <h3 style="font-size:20px;font-weight:700;margin-bottom:5px">${esc(emp.name)}</h3>
+        <p style="color:var(--t2);font-size:13px">📧 ${esc(emp.email)}</p>
+        <p style="color:var(--t2);font-size:12px;margin-top:3px">Cadastro: ${esc(emp.created_at||'—')}</p>
       </div>
     </div>
-  `;
-}
-
-function showEspelhoResult(monthLabel, html) {
-  const existing = document.getElementById('espelhoResultModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.id = 'espelhoResultModal';
-  modal.innerHTML = `
-    <div class="modal-content modal-large" style="max-height:92vh;overflow-y:auto">
-      <div class="modal-header">
-        <h2>📋 Espelho — ${monthLabel}</h2>
-        <button class="btn-close" onclick="document.getElementById('espelhoResultModal').remove()">×</button>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      <div style="background:rgba(0,0,0,.28);border:1px solid var(--b1);border-radius:var(--rs);padding:14px;text-align:center">
+        <span style="display:block;font-family:var(--fm);font-size:28px;font-weight:700;color:var(--y)">${emp.recs.length}</span>
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)">Total</span>
       </div>
-      <div class="modal-body">
-        ${html}
-        <div style="text-align:center;margin-top:24px;padding-top:20px;border-top:1px solid var(--border)">
-          <button onclick="window.print()" class="btn btn-primary" style="margin-right:10px">
-            🖨️ Imprimir / Salvar PDF
-          </button>
-          <button onclick="document.getElementById('espelhoResultModal').remove()" class="btn btn-secondary">
-            Fechar
-          </button>
-        </div>
+      <div style="background:rgba(0,0,0,.28);border:1px solid var(--b1);border-radius:var(--rs);padding:14px;text-align:center">
+        <span style="display:block;font-family:var(--fm);font-size:28px;font-weight:700;color:var(--y)">${todayC}</span>
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)">Hoje</span>
+      </div>
+      <div style="background:rgba(0,0,0,.28);border:1px solid var(--b1);border-radius:var(--rs);padding:14px;text-align:center">
+        <span style="display:block;font-family:var(--fm);font-size:28px;font-weight:700;color:var(--y)">${new Set(emp.recs.map(r=>r.date)).size}</span>
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--t3)">Dias</span>
       </div>
     </div>
+    <h3 style="font-family:var(--fb);font-size:16px;font-weight:800;letter-spacing:2px;margin-bottom:12px">ÚLTIMOS REGISTROS</h3>
+    <div class="records-table-wrap">
+      <table class="records-table">
+        <thead><tr><th>Tipo</th><th>Data</th><th>Hora</th><th>Foto</th><th>GPS</th></tr></thead>
+        <tbody>${recsHtml}</tbody>
+      </table>
+    </div>
   `;
-  document.body.appendChild(modal);
+  openModal('empModal');
 }
 
-/* ==================================================
-   AÇÕES DESTRUTIVAS (com modal de confirmação)
-   ================================================== */
-async function clearAllRecords() {
-  const confirmed = await confirmDialog(
-    '🗑️ Limpar Todos os Registros',
-    'Esta ação é IRREVERSÍVEL. Todos os registros de ponto de TODOS os colaboradores serão apagados. Deseja continuar?',
-    'Sim, apagar tudo',
-    'btn-danger'
-  );
-  if (!confirmed) return;
-
+/* ════════════════════════════════════════
+   REGISTROS
+════════════════════════════════════════ */
+async function loadAllRecords() {
   try {
-    const res  = await fetch(`${API_URL}/records`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ admin_id: adminId() })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro');
-    App.records = [];
-    await loadDashboard();
-    if (App.currentTab === 'employees') loadEmployees();
-    if (App.currentTab === 'records')   renderAdminRecords([]);
-    showToast('Todos os registros foram removidos.', 'success');
-  } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
-  }
+    const r = await fetch(`${API}/records`);
+    App.records = (await r.json()).records || [];
+    renderRecords(App.records);
+  } catch(e) { toast('Erro: '+e.message, 'error'); }
 }
 
-async function deleteEmployee(event, userId, userName) {
-  event.stopPropagation();
-
-  const confirmed = await confirmDialog(
-    '🗑️ Excluir Colaborador',
-    `Deseja excluir a conta de "${userName}"? Todos os registros dessa pessoa também serão removidos.`,
-    'Sim, excluir',
-    'btn-danger'
-  );
-  if (!confirmed) return;
-
-  try {
-    const res  = await fetch(`${API_URL}/users/${userId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ admin_id: adminId() })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro');
-    showToast(`Conta de "${userName}" excluída.`, 'success');
-    await loadEmployees();
-    await loadDashboard();
-  } catch (err) {
-    showToast('Erro: ' + err.message, 'error');
+function renderRecords(recs) {
+  const tbody = document.getElementById('recTbody');
+  const count = document.getElementById('recCount');
+  if (!tbody) return;
+  if (count) count.textContent = `${recs.length} registro${recs.length!==1?'s':''}`;
+  if (!recs.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-msg">Nenhum registro encontrado</td></tr>`;
+    return;
   }
-}
-
-/* Modal de confirmação customizado (substitui window.confirm) */
-function confirmDialog(title, message, okText = 'Confirmar', okClass = 'btn-primary') {
-  return new Promise(resolve => {
-    const existing = document.getElementById('confirmModal');
-    if (existing) existing.remove();
-
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.id = 'confirmModal';
-    modal.innerHTML = `
-      <div class="modal-content" style="max-width:440px">
-        <div class="modal-header">
-          <h2>${title}</h2>
-          <button class="btn-close" onclick="document.getElementById('confirmModal').remove()">×</button>
+  tbody.innerHTML = '';
+  recs.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${esc(r.user_name)}</strong><br><small style="color:var(--t2)">${esc(r.user_email)}</small></td>
+      <td><span class="rec-badge badge-${r.type.replace(/_/g,'-')}">${typeLabel(r.type)}</span></td>
+      <td>${esc(r.date)}</td>
+      <td style="font-family:var(--fm);font-size:15px;font-weight:700">${esc(r.time.slice(0,8))}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--t2)">${r.latitude?`📍 ${esc(r.address||'GPS')}`.slice(0,40):'—'}</td>
+      <td style="text-align:center">${r.has_photo?'<span style="cursor:pointer;font-size:18px" title="Ver foto" onclick="showRecordDetail('+r.id+')">📷</span>':'<span style="color:var(--t3)">—</span>'}</td>
+      <td>
+        <div class="tbl-actions">
+          <button class="btn btn-secondary btn-sm" onclick="showRecordDetail(${r.id})" title="Ver">👁</button>
+          <button class="btn btn-secondary btn-sm" onclick="editRecord(${r.id},'${esc(r.date)}','${r.time.slice(0,5)}','${r.type}')" title="Editar">✏️</button>
+          <button class="btn btn-danger btn-sm"    onclick="deleteRecord(${r.id})" title="Excluir">🗑</button>
         </div>
-        <div class="modal-body">
-          <p style="line-height:1.6;color:var(--text-muted);margin-bottom:24px">${message}</p>
-          <div style="display:flex;gap:12px;justify-content:flex-end">
-            <button class="btn btn-secondary" onclick="document.getElementById('confirmModal').remove()">
-              Cancelar
-            </button>
-            <button class="btn ${okClass}" id="confirmOkBtn">${okText}</button>
-          </div>
-        </div>
-      </div>
+      </td>
     `;
-    document.body.appendChild(modal);
-    modal.querySelector('#confirmOkBtn').onclick = () => {
-      modal.remove();
-      resolve(true);
-    };
-    modal.addEventListener('click', e => {
-      if (e.target === modal) { modal.remove(); resolve(false); }
-    });
+    tr.style.cursor = 'pointer';
+    tbody.appendChild(tr);
   });
 }
 
-/* ==================================================
-   UTILITÁRIOS
-   ================================================== */
-function getTypeLabel(type) {
-  return { entrada:'🟢 Entrada', saida_almoco:'🟡 Saída Almoço',
-           retorno_almoco:'🔵 Retorno Almoço', saida:'🔴 Saída' }[type] || type;
+/* ════════════════════════════════════════
+   DETALHE REGISTRO — CARREGA FOTO DO SERVIDOR
+════════════════════════════════════════ */
+async function showRecordDetail(id) {
+  document.getElementById('detailBody').innerHTML = '<p style="text-align:center;padding:40px;color:var(--t2)">⏳ Carregando...</p>';
+  openModal('detailModal');
+
+  try {
+    const r   = await fetch(`${API}/record/${id}`);
+    const { record } = await r.json();
+    if (!record) return (document.getElementById('detailBody').innerHTML = '<p class="empty-msg">Registro não encontrado</p>');
+
+    /* foto: pode ser base64 completo guardado no banco */
+    let photoHtml = `
+      <div class="photo-placeholder">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        Sem foto
+      </div>`;
+    if (record.photo_data) {
+      const src = record.photo_data.startsWith('data:') ? record.photo_data : `data:image/jpeg;base64,${record.photo_data}`;
+      photoHtml = `<div class="detail-photo-wrap"><img src="${src}" alt="Foto do registro" loading="lazy"></div>`;
+    }
+
+    const mapsUrl = record.latitude ? `https://www.google.com/maps?q=${record.latitude},${record.longitude}` : null;
+
+    document.getElementById('detailBody').innerHTML = `
+      <div class="detail-grid">
+        <div class="detail-row">
+          <strong>👤 Colaborador</strong><span>${esc(record.user_name)}</span>
+        </div>
+        <div class="detail-row">
+          <strong>📧 Email</strong><span>${esc(record.user_email)}</span>
+        </div>
+        <div class="detail-row">
+          <strong>⏱️ Tipo</strong>
+          <span class="rec-badge badge-${record.type.replace(/_/g,'-')}">${typeLabel(record.type)}</span>
+        </div>
+        <div class="detail-row">
+          <strong>📅 Data/Hora</strong>
+          <span>${esc(record.date)} às ${esc(record.time.slice(0,8))}</span>
+        </div>
+        <div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+          <strong>📷 Foto</strong>
+          ${photoHtml}
+        </div>
+        <div class="detail-row" style="flex-direction:column;align-items:flex-start;gap:10px">
+          <strong>📍 Localização</strong>
+          ${record.latitude
+            ? `<span style="font-size:13px;line-height:1.6;color:var(--t2)">${esc(record.address||record.latitude+', '+record.longitude)}</span>
+               <a href="${mapsUrl}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm">🗺 Abrir no Maps</a>`
+            : '<span style="color:var(--t3)">Não capturada</span>'
+          }
+        </div>
+      </div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--b1);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="editRecord(${record.id},'${esc(record.date)}','${esc(record.time.slice(0,5))}','${record.type}')">✏️ Editar Registro</button>
+        <button class="btn btn-danger"    onclick="deleteRecord(${record.id},true)">🗑️ Excluir</button>
+      </div>
+    `;
+  } catch(e) {
+    document.getElementById('detailBody').innerHTML = `<p class="empty-msg">Erro: ${esc(e.message)}</p>`;
+  }
 }
 
-function getTypeEmoji(type) {
-  return { entrada:'🟢', saida_almoco:'🟡', retorno_almoco:'🔵', saida:'🔴' }[type] || '⚪';
+/* ════════════════════════════════════════
+   EDITAR REGISTRO
+════════════════════════════════════════ */
+async function editRecord(id, date, time, type) {
+  // monta o HTML do form dentro do confirm modal (reaproveitando)
+  document.getElementById('confirmTitle').textContent = '✏️ Editar Registro';
+  document.getElementById('confirmMsg').innerHTML = `
+    <div class="form-group" style="margin-bottom:14px">
+      <label style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--t2);display:block;margin-bottom:7px">Tipo</label>
+      <select id="editType" class="form-control">
+        <option value="entrada"          ${type==='entrada'          ?'selected':''}>🟢 Entrada</option>
+        <option value="saida_almoco"     ${type==='saida_almoco'     ?'selected':''}>🟡 Saída para Almoço</option>
+        <option value="retorno_almoco"   ${type==='retorno_almoco'   ?'selected':''}>🔵 Retorno do Almoço</option>
+        <option value="saida"            ${type==='saida'            ?'selected':''}>🔴 Saída</option>
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group" style="margin:0">
+        <label style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--t2);display:block;margin-bottom:7px">Data (DD/MM/AAAA)</label>
+        <input id="editDate" class="form-control" value="${date}" placeholder="DD/MM/AAAA">
+      </div>
+      <div class="form-group" style="margin:0">
+        <label style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--t2);display:block;margin-bottom:7px">Hora (HH:MM)</label>
+        <input id="editTime" class="form-control" value="${time}" placeholder="HH:MM">
+      </div>
+    </div>
+  `;
+  document.getElementById('confirmOk').textContent = '✓ Salvar';
+
+  openModal('confirmModal');
+
+  // aguarda resolução do confirm
+  const ok = await new Promise(res => { _resolveConfirm = res; });
+  if (!ok) return;
+
+  const newType = document.getElementById('editType')?.value;
+  const newDate = document.getElementById('editDate')?.value.trim();
+  const newTime = document.getElementById('editTime')?.value.trim();
+
+  if (!newType || !newDate || !newTime) return toast('Preencha todos os campos', 'error');
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(newDate)) return toast('Data inválida (use DD/MM/AAAA)', 'error');
+  if (!/^\d{2}:\d{2}$/.test(newTime))          return toast('Hora inválida (use HH:MM)', 'error');
+
+  try {
+    const r = await fetch(`${API}/record/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_id: App.admin.id, type: newType, date: newDate, time: newTime+':00' }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    toast('✅ Registro atualizado!', 'success');
+    closeModal('detailModal');
+    // atualiza em memória
+    const idx = App.records.findIndex(x => x.id === id);
+    if (idx >= 0) App.records[idx] = { ...App.records[idx], type: newType, date: newDate, time: newTime+':00' };
+    if (App.tab === 'records')   renderRecords(App.records);
+    if (App.tab === 'dashboard') renderActivity(App.records.slice(0,12));
+  } catch(e) { toast('Erro: '+e.message, 'error'); }
 }
 
-/* ==================================================
-   SCROLL
-   ================================================== */
-function updateScrollButtons() {
-  const top  = window.pageYOffset;
-  const h    = document.documentElement.scrollHeight;
-  const view = window.innerHeight;
-  document.getElementById('scrollToTop')?.classList.toggle('visible', top > 300);
-  const botBtn = document.getElementById('scrollToBottom');
-  if (botBtn) botBtn.style.display = top + view >= h - 80 ? 'none' : 'flex';
+/* ════════════════════════════════════════
+   FILTROS
+════════════════════════════════════════ */
+function applyFilters() {
+  const start = document.getElementById('fStart').value;
+  const end   = document.getElementById('fEnd').value;
+  const user  = document.getElementById('fUser').value;
+  const type  = document.getElementById('fType').value;
+  let f = [...App.records];
+  if (start && end) f = f.filter(r => { const iso=brToIso(r.date); return iso>=start&&iso<=end; });
+  if (user)  f = f.filter(r => r.user_name === user);
+  if (type)  f = f.filter(r => r.type === type);
+  renderRecords(f);
+  toast(`${f.length} registro(s)`, 'success');
 }
 
-function scrollToTopFn()    { window.scrollTo({ top:0, behavior:'smooth' }); }
-function scrollToBottomFn() { window.scrollTo({ top:document.documentElement.scrollHeight, behavior:'smooth' }); }
+function clearFilters() {
+  ['fStart','fEnd'].forEach(id => document.getElementById(id).value='');
+  ['fUser','fType'].forEach(id => document.getElementById(id).selectedIndex=0);
+  renderRecords(App.records);
+}
 
-console.log('✅ WD Manutenções Admin — carregado com sucesso');
+function exportCSV() {
+  if (!App.records.length) return toast('Nenhum dado para exportar', 'error');
+  const hdr = 'Nome,Email,Tipo,Data,Hora,Localização\n';
+  const rows = App.records.map(r =>
+    `"${r.user_name}","${r.user_email}","${typeLabel(r.type).replace(/[🟢🟡🔵🔴]/g,'').trim()}","${r.date}","${r.time}","${r.address||''}"`
+  ).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['\ufeff'+hdr+rows], {type:'text/csv;charset=utf-8'}));
+  a.download = `WD_Ponto_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('📥 CSV exportado!', 'success');
+}
+
+/* ════════════════════════════════════════
+   AÇÕES DESTRUTIVAS
+════════════════════════════════════════ */
+async function deleteRecord(id, closeDetail=false) {
+  const ok = await confirm2('🗑️ Excluir Registro', 'Tem certeza? Esta ação não pode ser desfeita.', 'Excluir');
+  if (!ok) return;
+  try {
+    const r = await fetch(`${API}/record/${id}`, {
+      method:'DELETE', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ admin_id: App.admin.id })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    toast('Registro excluído', 'success');
+    if (closeDetail) closeModal('detailModal');
+    App.records = App.records.filter(r => r.id !== id);
+    if (App.tab === 'records') renderRecords(App.records);
+    if (App.tab === 'dashboard') renderActivity(App.records.slice(0,12));
+  } catch(e) { toast('Erro: '+e.message, 'error'); }
+}
+
+async function deleteEmp(id, name) {
+  const ok = await confirm2('🗑️ Excluir Colaborador', `Excluir "${name}"? Os registros serão preservados.`, 'Excluir');
+  if (!ok) return;
+  try {
+    const r = await fetch(`${API}/users/${id}`, {
+      method:'DELETE', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ admin_id: App.admin.id })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    toast(`"${name}" excluído(a)`, 'success');
+    await loadEmployees();
+  } catch(e) { toast('Erro: '+e.message, 'error'); }
+}
+
+async function clearAll() {
+  const ok = await confirm2('🗑️ APAGAR TUDO', 'Isso apagará TODOS os registros de ponto de TODOS os colaboradores. Ação IRREVERSÍVEL!', 'Apagar Tudo');
+  if (!ok) return;
+  try {
+    const r = await fetch(`${API}/records`, {
+      method:'DELETE', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ admin_id: App.admin.id })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    App.records = [];
+    toast(`${d.deleted} registros apagados`, 'success');
+    loadDashboard();
+  } catch(e) { toast('Erro: '+e.message, 'error'); }
+}
+
+/* confirm modal customizado */
+let _resolveConfirm = null;
+function confirm2(title, msg, okText='Confirmar') {
+  return new Promise(resolve => {
+    _resolveConfirm = resolve;
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMsg').textContent   = msg;
+    document.getElementById('confirmOk').textContent    = okText;
+    openModal('confirmModal');
+  });
+}
+function resolveConfirm(val) { closeModal('confirmModal'); _resolveConfirm?.(val); _resolveConfirm=null; }
+
+/* ════════════════════════════════════════
+   RELATÓRIOS
+════════════════════════════════════════ */
+function reportDaily() {
+  const today = new Date().toLocaleDateString('pt-BR');
+  const recs  = App.records.filter(r=>r.date===today);
+  const users = new Set(recs.map(r=>r.user_name));
+  let tbl='';
+  recs.forEach(r=>{
+    tbl+=`<tr><td>${esc(r.user_name)}</td>
+      <td><span class="rec-badge badge-${r.type.replace(/_/g,'-')}">${typeLabel(r.type)}</span></td>
+      <td>${esc(r.time.slice(0,8))}</td>
+      <td>${r.latitude?'📍':'-'}</td><td>${r.has_photo?'📷':'-'}</td></tr>`;
+  });
+  showReport('📅 Relatório Diário — '+today, `
+    <p style="margin-bottom:14px;color:var(--t2)"><strong>${recs.length}</strong> registros | <strong>${users.size}</strong> colaboradores presentes</p>
+    ${recs.length?`<div class="records-table-wrap">
+      <table class="records-table">
+        <thead><tr><th>Colaborador</th><th>Tipo</th><th>Hora</th><th>GPS</th><th>Foto</th></tr></thead>
+        <tbody>${tbl}</tbody>
+      </table></div>` : '<p class="empty-msg">Sem registros hoje</p>'}
+  `);
+}
+
+function reportWeekly() {
+  const now = new Date(), ago = new Date(now - 7*86400000);
+  const recs = App.records.filter(r=>{
+    const [d,m,y]=r.date.split('/'); return new Date(+y,+m-1,+d)>=ago;
+  });
+  const byDay={};
+  recs.forEach(r=>{ byDay[r.date]=(byDay[r.date]||0)+1; });
+  let rows=Object.keys(byDay).sort().map(d=>`<tr><td>${esc(d)}</td><td>${byDay[d]}</td></tr>`).join('');
+  showReport('📆 Relatório Semanal', `
+    <p style="margin-bottom:14px;color:var(--t2)"><strong>${recs.length}</strong> registros nos últimos 7 dias</p>
+    <div class="records-table-wrap"><table class="records-table">
+      <thead><tr><th>Data</th><th>Registros</th></tr></thead><tbody>${rows}</tbody>
+    </table></div>
+  `);
+}
+
+function reportByEmployee() {
+  if (!App.employees.length) return (toast('Acesse a aba Colaboradores primeiro','error'));
+  let html='';
+  App.employees.forEach(emp=>{
+    html+=`<div style="margin-bottom:14px;padding:14px 18px;background:rgba(0,0,0,.2);border-radius:var(--rs);border-left:3px solid var(--y)">
+      <strong>${esc(emp.name)}</strong>
+      <span style="color:var(--t2);font-size:13px;margin-left:12px">
+        Total: ${emp.recs.length} | Entradas: ${emp.recs.filter(r=>r.type==='entrada').length} | Saídas: ${emp.recs.filter(r=>r.type==='saida').length}
+      </span>
+    </div>`;
+  });
+  showReport('👤 Por Colaborador', html);
+}
+
+function showReport(title, html) {
+  const el = document.getElementById('reportResult');
+  el.innerHTML = `<h3>${title}</h3>${html}`;
+  el.classList.add('show');
+  el.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+/* ════════════════════════════════════════
+   ESPELHO DE PONTO
+════════════════════════════════════════ */
+function openEspelhoModal() {
+  const sel = document.getElementById('espUser');
+  if (sel) {
+    const users = [...new Set(App.records.map(r=>r.user_name))].sort();
+    sel.innerHTML = '<option value="">Todos</option>' + users.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join('');
+  }
+  const mi = document.getElementById('espMonth');
+  if (mi) mi.value = new Date().toISOString().slice(0,7);
+  openModal('espelhoModal');
+}
+
+function gerarEspelho() {
+  const userName = document.getElementById('espUser').value;
+  const monthVal = document.getElementById('espMonth').value;
+  if (!monthVal) return toast('Selecione o mês', 'error');
+  const [year, month] = monthVal.split('-');
+  const monthLabel = new Date(+year,+month-1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+
+  let recs = App.records.filter(r=>{
+    const [,m,y]=r.date.split('/'); return y===year && m===month.padStart(2,'0');
+  });
+  if (userName) recs = recs.filter(r=>r.user_name===userName);
+  if (!recs.length) return toast('Nenhum registro neste período','error');
+
+  const byUser={};
+  recs.forEach(r=>{ if(!byUser[r.user_name])byUser[r.user_name]={}; if(!byUser[r.user_name][r.date])byUser[r.user_name][r.date]=[]; byUser[r.user_name][r.date].push(r); });
+
+  let html='';
+  Object.keys(byUser).forEach(u=>{ html+=buildEspelho(u,monthLabel,byUser[u]); });
+
+  document.getElementById('espelhoResultTitle').textContent = 'Espelho — '+monthLabel.toUpperCase();
+  document.getElementById('espelhoResultBody').innerHTML = html + `
+    <div style="text-align:center;margin-top:22px;padding-top:18px;border-top:1px solid var(--b1);display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+      <button onclick="downloadEspelhoPDF()" class="btn btn-primary">📄 Baixar PDF</button>
+      <button onclick="window.print()" class="btn btn-secondary">🖨️ Imprimir</button>
+      <button onclick="closeModal('espelhoResultModal')" class="btn btn-secondary">Fechar</button>
+    </div>`;
+  closeModal('espelhoModal');
+  openModal('espelhoResultModal');
+  // guarda dados para o PDF
+  App._espelhoHtml = html;
+  App._espelhoTitle = 'Espelho — '+monthLabel.toUpperCase();
+}
+
+function buildEspelho(userName, monthLabel, userRecs) {
+  const dates = Object.keys(userRecs).sort((a,b)=>{
+    const p=d=>{const[dd,mm,yy]=d.split('/');return new Date(+yy,+mm-1,+dd);}; return p(a)-p(b);
+  });
+  let horasUteis=0,horasSab=0,horasDomFer=0,daysWorked=0,incompletos=0,rows='';
+
+  dates.forEach(date=>{
+    const day=userRecs[date].sort((a,b)=>a.ts-b.ts);
+    const dow=getDow(date), isofmt=brToIso(date), isFer=FERIADOS.has(isofmt);
+    const entrada=day.find(r=>r.type==='entrada');
+    const sAlm   =day.find(r=>r.type==='saida_almoco');
+    const rAlm   =day.find(r=>r.type==='retorno_almoco');
+    const saida  =day.find(r=>r.type==='saida');
+    let mins=0;
+    if(entrada&&sAlm)  mins+=calcMin(entrada.time,sAlm.time);
+    if(rAlm&&saida)    mins+=calcMin(rAlm.time,saida.time);
+    const incomplete = !!entrada && !saida;
+    if(incomplete) incompletos++;
+    let tipoDia,bg;
+    if(isFer)       {tipoDia='🎊 Feriado';bg='#fff0f0';horasDomFer+=mins;}
+    else if(dow===0){tipoDia='☀️ Domingo';bg='#fff0f0';horasDomFer+=mins;}
+    else if(dow===6){tipoDia='📅 Sábado'; bg='#fffbeb';horasSab+=mins;}
+    else            {tipoDia='📋 Útil';   bg='#fafafa';horasUteis+=mins;}
+    if(mins>0)daysWorked++;
+    const totalStr=mins>0?fmtMin(mins):incomplete?'⚠️ Incompleto':'-';
+    const totalStyle=incomplete?'color:#d97706;font-weight:700':'font-weight:700';
+    rows+=`<tr style="background:${bg}">
+      <td style="padding:8px;border:1px solid #ddd;text-align:center;font-weight:600">${date.split('/')[0]}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center;font-size:11px">${tipoDia}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center">${entrada?entrada.time.slice(0,5):'-'}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center">${sAlm?sAlm.time.slice(0,5):'-'}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center">${rAlm?rAlm.time.slice(0,5):'-'}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center">${saida?saida.time.slice(0,5):'-'}</td>
+      <td style="padding:8px;border:1px solid #ddd;text-align:center;${totalStyle}">${totalStr}</td>
+    </tr>`;
+  });
+
+  const totSab=Math.round(horasSab*1.5), totDomFer=Math.round(horasDomFer*2);
+  const total=horasUteis+totSab+totDomFer;
+  const aviso=incompletos?`<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px;margin-top:14px;color:#856404;font-size:13px">⚠️ <strong>${incompletos} dia(s) incompleto(s)</strong> — entrada sem saída correspondente. Não contabilizados nas horas.</div>`:'';
+
+  return `<div style="font-family:Arial,sans-serif;margin-bottom:36px">
+    <div style="background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;padding:22px 28px;border-radius:12px 12px 0 0;text-align:center">
+      <h2 style="margin:0;font-size:22px;font-weight:900;letter-spacing:3px">WD MANUTENÇÕES</h2>
+      <h3 style="margin:6px 0 0;font-size:14px;font-weight:600">ESPELHO DE PONTO ELETRÔNICO</h3>
+    </div>
+    <div style="background:white;color:#111;padding:24px;border:1px solid #ddd;border-top:none;border-radius:0 0 12px 12px">
+      <div style="margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #FFD700">
+        <p style="margin:3px 0"><strong>COLABORADOR:</strong> ${esc(userName)}</p>
+        <p style="margin:3px 0"><strong>PERÍODO:</strong> ${monthLabel.toUpperCase()}</p>
+        <p style="margin:3px 0"><strong>EMISSÃO:</strong> ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR')}</p>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#FFD700;color:#000">
+          <th style="padding:9px;border:1px solid #ddd">DIA</th>
+          <th style="padding:9px;border:1px solid #ddd">TIPO</th>
+          <th style="padding:9px;border:1px solid #ddd">ENTRADA</th>
+          <th style="padding:9px;border:1px solid #ddd">S.ALMOÇO</th>
+          <th style="padding:9px;border:1px solid #ddd">RETORNO</th>
+          <th style="padding:9px;border:1px solid #ddd">SAÍDA</th>
+          <th style="padding:9px;border:1px solid #ddd">TOTAL</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${aviso}
+      <div style="margin-top:20px;padding:16px;background:#f8f9fa;border-radius:10px;border:2px solid #FFD700">
+        <h3 style="margin:0 0 14px;text-align:center;font-size:15px">📊 RESUMO COM ADICIONAIS</h3>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#FFD700;color:#000">
+            <th style="padding:9px;border:1px solid #ddd;text-align:left">Tipo</th>
+            <th style="padding:9px;border:1px solid #ddd">Horas</th>
+            <th style="padding:9px;border:1px solid #ddd">Adicional</th>
+            <th style="padding:9px;border:1px solid #ddd">Total</th>
+          </tr></thead>
+          <tbody>
+            <tr style="background:#f9f9f9"><td style="padding:9px;border:1px solid #ddd">📋 Dias Úteis</td><td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasUteis)}</td><td style="padding:9px;border:1px solid #ddd;text-align:center">—</td><td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:700;background:#e8f5e9">${fmtMin(horasUteis)}</td></tr>
+            <tr style="background:#fffbeb"><td style="padding:9px;border:1px solid #ddd">📅 Sábados</td><td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasSab)}</td><td style="padding:9px;border:1px solid #ddd;text-align:center;color:#d97706;font-weight:600">+50%</td><td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fef3c7">${fmtMin(totSab)}</td></tr>
+            <tr style="background:#fff0f0"><td style="padding:9px;border:1px solid #ddd">☀️ Dom/Feriados</td><td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:700">${fmtMin(horasDomFer)}</td><td style="padding:9px;border:1px solid #ddd;text-align:center;color:#dc2626;font-weight:600">+100%</td><td style="padding:9px;border:1px solid #ddd;text-align:center;font-weight:700;background:#fee2e2">${fmtMin(totDomFer)}</td></tr>
+          </tbody>
+          <tfoot><tr style="background:#FFD700;color:#000">
+            <td colspan="3" style="padding:12px;border:1px solid #ddd;text-align:right;font-weight:800;font-size:14px">💰 TOTAL GERAL:</td>
+            <td style="padding:12px;border:1px solid #ddd;text-align:center;font-weight:900;font-size:16px">${fmtMin(total)} (${(total/60).toFixed(2)}h)</td>
+          </tr></tfoot>
+        </table>
+      </div>
+      <div style="margin-top:36px;padding-top:18px;border-top:2px solid #FFD700">
+        <p style="text-align:center;font-size:11px;color:#777;margin-bottom:36px">Documento gerado pelo Sistema WD Manutenções — CLT Art. 74 §2º — ${new Date().toLocaleDateString('pt-BR')}</p>
+        <div style="display:flex;justify-content:space-around;gap:40px">
+          <div style="text-align:center;flex:1"><div style="border-top:2px solid #000;margin-bottom:7px"></div><p style="font-size:12px;font-weight:600">Colaborador</p></div>
+          <div style="text-align:center;flex:1"><div style="border-top:2px solid #000;margin-bottom:7px"></div><p style="font-size:12px;font-weight:600">Responsável</p></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ════════════════════════════════════════
+   MODAL HELPERS
+════════════════════════════════════════ */
+function openModal(id)  { document.getElementById(id)?.classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id)?.classList.add('hidden'); }
+
+// fecha ao clicar no backdrop
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal')) {
+    const id = e.target.id;
+    if (id === 'confirmModal') resolveConfirm(false);
+    else closeModal(id);
+  }
+});
+
+/* ════════════════════════════════════════
+   DOWNLOAD PDF — usa html2pdf.js via CDN
+════════════════════════════════════════ */
+async function downloadEspelhoPDF() {
+  const html = App._espelhoHtml;
+  const title = App._espelhoTitle || 'Espelho_Ponto';
+  if (!html) return toast('Gere o espelho primeiro', 'error');
+
+  // carrega html2pdf dinamicamente se ainda não foi carregado
+  if (!window.html2pdf) {
+    toast('⏳ Preparando PDF...', 'info');
+    await new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  // container temporário com o HTML do espelho
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;left:-9999px;top:0;width:210mm;background:#fff;padding:10mm;font-family:Arial,sans-serif';
+  wrap.innerHTML = html;
+  document.body.appendChild(wrap);
+
+  const fname = (title + '_' + new Date().toISOString().slice(0,10))
+    .replace(/[^a-zA-Z0-9_\-]/g,'_') + '.pdf';
+
+  try {
+    await window.html2pdf(wrap, {
+      margin:       [8, 8, 8, 8],
+      filename:     fname,
+      image:        { type:'jpeg', quality:.92 },
+      html2canvas:  { scale:2, useCORS:true, letterRendering:true },
+      jsPDF:        { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak:    { mode:'avoid-all' },
+    });
+    toast('📄 PDF baixado!', 'success');
+  } catch(e) {
+    toast('Erro ao gerar PDF: ' + e.message, 'error');
+  } finally {
+    document.body.removeChild(wrap);
+  }
+}
+
+/* ════════════════════════════════════════
+   UTILS
+════════════════════════════════════════ */
+function esc(s) {
+  if (s==null) return '';
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function typeLabel(t) {
+  return {entrada:'🟢 Entrada',saida_almoco:'🟡 S.Almoço',retorno_almoco:'🔵 Retorno',saida:'🔴 Saída'}[t]||t;
+}
+function typeEmoji(t) {
+  return {entrada:'🟢',saida_almoco:'🟡',retorno_almoco:'🔵',saida:'🔴'}[t]||'⚪';
+}
+function calcMin(t1,t2) {
+  const m=t=>{const[h,mi]=t.split(':').map(Number);return h*60+mi;};
+  return Math.max(0,m(t2)-m(t1));
+}
+function fmtMin(m) { return `${Math.floor(m/60)}h${String(m%60).padStart(2,'0')}`; }
+function getDow(brDate) { const[d,m,y]=brDate.split('/'); return new Date(+y,+m-1,+d).getDay(); }
+function brToIso(brDate) { const[d,m,y]=brDate.split('/'); return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`; }
+function debounce(fn,ms) { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); }; }
+function val(id) { return (document.getElementById(id)?.value||'').trim(); }
+async function post(path,body) {
+  const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return r.json();
+}
+
+const COLORS={success:'#00e676',error:'#ff4444',warning:'#ff9100',info:'#448aff'};
+function toast(msg,type='success') {
+  document.querySelectorAll('.wd-toast').forEach(t=>t.remove());
+  const el=document.createElement('div'); el.className='wd-toast'; el.textContent=msg;
+  el.style.cssText=`position:fixed;top:22px;right:22px;background:${COLORS[type]||COLORS.info};
+    color:#000;padding:14px 22px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.4);
+    z-index:10000;font-weight:700;font-family:'Barlow',sans-serif;font-size:13px;
+    max-width:360px;line-height:1.5;animation:slideIn .3s ease both;`;
+  document.body.appendChild(el);
+  setTimeout(()=>{ el.style.animation='slideOut .3s ease forwards'; setTimeout(()=>el.remove(),300); },3500);
+}
+const _s=document.createElement('style');
+_s.textContent='@keyframes slideIn{from{transform:translateX(400px);opacity:0}to{transform:translateX(0);opacity:1}}@keyframes slideOut{from{transform:translateX(0);opacity:1}to{transform:translateX(400px);opacity:0}}';
+document.head.appendChild(_s);
